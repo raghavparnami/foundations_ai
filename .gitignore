@@ -1,0 +1,37 @@
+# Node
+node_modules/
+.next/
+dist/
+*.log
+
+# Env (secrets — NEVER commit)
+.env
+.env.local
+.env*.local
+backend/.env
+backend/.env.local
+frontend/.env
+frontend/.env.local
+
+# Python (the new FastAPI app under backend/)
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# TypeScript build state
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Loom-generated catalog mirror (deprecated; source of truth is foundation_ai.docs)
+loom-catalog/
+!loom-catalog/.gitkeep

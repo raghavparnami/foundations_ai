@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: loom-postgres
+    environment:
+      POSTGRES_USER: loom
+      POSTGRES_PASSWORD: loom
+      POSTGRES_DB: postgres
+    ports:
+      - "5544:5432"
+    volumes:
+      - loom_pg_data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loom -d postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+volumes:
+  loom_pg_data:

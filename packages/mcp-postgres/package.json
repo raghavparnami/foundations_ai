@@ -1,0 +1,31 @@
+{
+  "name": "@loom/mcp-postgres",
+  "version": "0.1.0",
+  "description": "MCP server exposing any Postgres database as read-only tools (list_tables, describe_table, sample_rows, run_sql) for LLM agents. Drop-in for Claude Code / Claude Desktop.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "loom-mcp-postgres": "./bin/loom-mcp-postgres.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "node-sql-parser": "^5.3.0",
+    "pg": "^8.13.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
