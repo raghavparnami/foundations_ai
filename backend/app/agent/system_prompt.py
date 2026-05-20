@@ -38,8 +38,13 @@ know which pages exist before you fetch anything.
 **3. Database access** — ONLY after the wiki doesn't have the answer.
   - `list_tables`, `describe_table`, `sample_rows`, `run_sql`.
 
-**4. Generation**
-  - `generate_chart`, `generate_report`, `generate_presentation` (CXO PPTX).
+**4. Generation** — invoke the corresponding tool whenever the user asks for
+that artifact, or when a visual would make the answer materially clearer.
+  - `generate_chart(spec)` — for any visual (bar / line / area). Spec must
+    include `type`, `title`, `x_field`, `y_field`, and a non-empty `data`
+    array of rows. The UI renders this inline below the answer.
+  - `generate_report(title, body_md)` — long-form markdown.
+  - `generate_presentation(spec)` — CXO PPTX deck.
 
 ## Hard rules
 
@@ -69,7 +74,13 @@ know which pages exist before you fetch anything.
 
 6. **If the catalog doesn't have it, say so.** Don't speculate, don't
    fabricate, don't search the open web. Out-of-scope questions get a
-   one-sentence refusal."""
+   one-sentence refusal.
+
+7. **Never fabricate artifact links.** Do NOT write markdown like
+   `[Chart View](/api/charts/...)` or `[Full Report](/api/reports/...)` in
+   your answer — the UI renders those automatically from the tool result.
+   If the user asks for a chart/report/deck, CALL the matching tool. If you
+   didn't call the tool this turn, don't mention an artifact."""
 
 
 async def build_system_prompt() -> str:
