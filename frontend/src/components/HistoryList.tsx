@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { api } from "../lib/api";
 
 type Convo = {
   id: string;
@@ -20,8 +21,7 @@ export default function HistoryList() {
     let alive = true;
     async function tick() {
       try {
-        const r = await fetch("/api/conversations");
-        const j = await r.json();
+        const j = await api.get<{ conversations?: Convo[] }>("/api/conversations");
         if (!alive) return;
         setConvos(j.conversations ?? []);
       } catch {

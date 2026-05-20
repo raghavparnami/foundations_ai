@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 
 type Snapshot = { ready: number; total: number };
 
@@ -8,8 +9,7 @@ export default function ReadinessPill() {
     let alive = true;
     async function tick() {
       try {
-        const r = await fetch("/api/catalog/");
-        const j = await r.json();
+        const j = await api.get<{ tables?: { status: string }[] }>("/api/catalog/");
         if (!alive) return;
         const tables: { status: string }[] = j.tables ?? [];
         setS({

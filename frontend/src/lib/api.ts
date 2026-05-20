@@ -38,6 +38,10 @@ function url(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
+// Exported so non-JSON requests (FormData uploads, SSE, etc.) can resolve the
+// same runtime base without re-implementing the window-global lookup.
+export const apiUrl = url;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;

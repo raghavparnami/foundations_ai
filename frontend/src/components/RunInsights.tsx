@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 
 type Insight = {
   id: number;
@@ -20,8 +21,7 @@ export default function RunInsights() {
     let alive = true;
     async function fetchAll() {
       try {
-        const r = await fetch("/api/insights");
-        const j = await r.json();
+        const j = await api.get<{ insights?: Insight[] }>("/api/insights");
         if (!alive) return;
         setInsights(j.insights ?? []);
       } catch {

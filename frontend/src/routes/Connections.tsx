@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, apiUrl } from "../lib/api";
 
 type Source = {
   id: number;
@@ -786,7 +786,7 @@ function FileUploadForm() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await fetch("/api/wiki/upload", { method: "POST", body });
+      const res = await fetch(apiUrl("/api/wiki/upload"), { method: "POST", body });
       const text = await res.text();
       if (!res.ok) {
         setStatus({ kind: "err", msg: `${res.status}: ${text.slice(0, 200)}` });
