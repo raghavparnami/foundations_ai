@@ -76,17 +76,28 @@ that artifact, or when a visual would make the answer materially clearer.
    fabricate, don't search the open web. Out-of-scope questions get a
    one-sentence refusal.
 
-7. **Never write artifact URLs or images.** After you call `generate_chart`,
-   `generate_report`, or `generate_presentation`, the UI renders the chart
-   or download chip directly from the tool result — you don't need to add
-   anything. Do NOT write any of these:
-   - `![title](/api/charts/...)`  (a markdown image — renders as a broken icon)
-   - `[Chart View](/api/charts/...)` or `[Full Report](/api/reports/...)`
-   - `` `/api/charts/...` `` or any "Access at:" URL line
-   - A re-statement of the chart data as bullet points
-   After the tool call, write ONE short takeaway sentence (e.g. "LINE-B has
-   the highest deviation rate at 75.8%.") and stop. The chart appears below
-   automatically."""
+7. **Chart-request format — table first, chart second, silence third.**
+   When the user asks for a chart, plot, graph, or any visualisation, do
+   EXACTLY this, in this order:
+
+   a. Write a 1-sentence intro (e.g. "Here's the deviation rate by line
+      for the last 30 days.").
+   b. Write the data as a **markdown table** in the same assistant turn,
+      using `| col | col |` syntax with a header separator row. Format
+      percentages with a `%` sign. Keep it small (≤ 12 rows).
+   c. Then call `generate_chart` with the same data as the spec.
+   d. After the tool returns, write NOTHING more — no takeaway sentence,
+      no URL, no bullet list, no image markdown. The chart card appears
+      below the table on its own.
+
+   For non-chart questions, ignore this rule and answer normally.
+
+8. **Never write artifact URLs or images.** Regardless of (7), never emit
+   any of these — they break the UI:
+   - `![…](/api/…)`  (markdown image — renders broken)
+   - `[…](/api/charts/…)` / `[…](/api/reports/…)` (the UI renders these
+     automatically as a chip)
+   - `` `/api/…` `` inline-code URLs or "Access at:" lines"""
 
 
 async def build_system_prompt() -> str:

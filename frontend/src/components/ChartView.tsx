@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import {
   Area,
   AreaChart,
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   LabelList,
   Line,
@@ -31,27 +32,32 @@ type ChartResponse = {
 };
 
 const ACCENT = "#5b6cff";
-const ACCENT_SOFT = "#8a4dff";
-const GRID = "#e7e9f1";
+const ACCENT_HI = "#8a4dff";
+const ACCENT_DIM = "#c8cdf2";
+const GRID = "#eceef5";
 const AXIS = "#5b6075";
 const TICK = "#9aa0b4";
 const TOOLTIP_BG = "#ffffff";
 const TOOLTIP_BORDER = "#d2d6e3";
 
 function humanLabel(key: string): string {
-  // line_id -> Line Id; deviation_rate_percent -> Deviation Rate Percent
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase());
+  return key.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function formatTick(v: unknown): string {
-  if (typeof v === "number") {
-    if (Math.abs(v) >= 1000) return v.toLocaleString();
-    if (Number.isInteger(v)) return String(v);
-    return v.toFixed(1);
+function isPercentField(key: string): boolean {
+  return /(percent|pct|rate|share|ratio)/i.test(key);
+}
+
+function formatValue(v: unknown, key: string, isPct: boolean): string {
+  if (typeof v !== "number" || Number.isNaN(v)) return String(v ?? "");
+  if (isPct) {
+    // If looks like 0..1 fraction, scale to %. Otherwise treat as already %.
+    const pctVal = Math.abs(v) <= 1.5 ? v * 100 : v;
+    return `${pctVal.toFixed(1)}%`;
   }
-  return String(v ?? "");
+  if (Math.abs(v) >= 1000) return v.toLocaleString();
+  if (Number.isInteger(v)) return String(v);
+  return v.toFixed(1);
 }
 
 export default function ChartView({
@@ -81,25 +87,42 @@ export default function ChartView({
     };
   }, [slug, spec]);
 
+  const summary = useMemo(() => buildSummary(spec), [spec]);
+
   if (!spec) {
     return (
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] p-4 text-[12px] text-[var(--text-faint)] shadow-sm">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-5 text-[12px] text-[var(--text-faint)] shadow-sm">
         loading chart…
       </div>
     );
   }
 
   return (
-    <figure className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] p-5 shadow-sm">
-      <figcaption className="mb-4">
-        <h3 className="text-[14px] font-semibold text-[var(--text)] leading-tight">
-          {spec.title}
-        </h3>
-        <p className="text-[11px] text-[var(--text-faint)] mt-0.5">
-          {humanLabel(spec.yKey)} by {humanLabel(spec.xKey)}
-        </p>
+    <figure className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6 shadow-[0_2px_18px_rgba(20,21,42,0.04)]">
+      <figcaption className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-[15px] font-semibold text-[var(--text)] leading-tight">
+            {spec.title}
+          </h3>
+          <p className="text-[11px] text-[var(--text-faint)] mt-1 font-medium uppercase tracking-wider">
+            {humanLabel(spec.yKey)} by {humanLabel(spec.xKey)}
+          </p>
+        </div>
+        {summary && (
+          <div className="text-right shrink-0">
+            <div
+              className="text-[18px] font-semibold leading-none"
+              style={{ color: ACCENT }}
+            >
+              {summary.maxLabel}
+            </div>
+            <div className="text-[10px] text-[var(--text-faint)] mt-1 uppercase tracking-wider">
+              {summary.maxKey}
+            </div>
+          </div>
+        )}
       </figcaption>
-      <div className="h-72">
+      <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
           {renderChart(spec)}
         </ResponsiveContainer>
@@ -108,29 +131,77 @@ export default function ChartView({
   );
 }
 
+function buildSummary(
+  spec: ChartSpec | null,
+): { maxKey: string; maxLabel: string } | null {
+  if (!spec || spec.data.length === 0) return null;
+  const isPct = isPercentField(spec.yKey);
+  let maxIdx = 0;
+  let maxVal = -Infinity;
+  for (let i = 0; i < spec.data.length; i++) {
+    const row = spec.data[i];
+    if (!row) continue;
+    const raw = row[spec.yKey];
+    const num = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(num) && num > maxVal) {
+      maxVal = num;
+      maxIdx = i;
+    }
+  }
+  if (!Number.isFinite(maxVal)) return null;
+  const peakRow = spec.data[maxIdx];
+  const peakKey = peakRow ? String(peakRow[spec.xKey] ?? "") : "";
+  return {
+    maxKey: peakKey ? `peak · ${peakKey}` : "peak",
+    maxLabel: formatValue(maxVal, spec.yKey, isPct),
+  };
+}
+
 function renderChart(s: ChartSpec): ReactElement {
   const xLabel = humanLabel(s.xKey);
   const yLabel = humanLabel(s.yKey);
+  const isPct = isPercentField(s.yKey);
+
   const axisProps = {
     stroke: AXIS,
-    tick: { fill: TICK, fontSize: 11 },
+    tick: { fill: TICK, fontSize: 11, fontWeight: 500 },
     axisLine: { stroke: GRID },
     tickLine: { stroke: GRID },
+    tickMargin: 8,
   };
+
   const tooltipProps = {
     contentStyle: {
       background: TOOLTIP_BG,
       border: `1px solid ${TOOLTIP_BORDER}`,
-      borderRadius: 8,
+      borderRadius: 10,
       fontSize: 12,
       color: "#14152a",
-      boxShadow: "0 4px 16px rgba(20, 21, 42, 0.08)",
-      padding: "8px 10px",
+      boxShadow: "0 6px 24px rgba(20, 21, 42, 0.10)",
+      padding: "8px 12px",
     },
-    cursor: { fill: "rgba(91, 108, 255, 0.08)" },
-    formatter: (value: unknown) => [formatTick(value), yLabel] as [string, string],
+    cursor: { fill: "rgba(91, 108, 255, 0.06)" },
+    formatter: (value: unknown) => [
+      formatValue(value, s.yKey, isPct),
+      yLabel,
+    ] as [string, string],
   };
-  const margin = { top: 24, right: 24, bottom: 36, left: 16 };
+
+  const margin = { top: 28, right: 28, bottom: 44, left: 24 };
+
+  // Find max for bar highlighting.
+  let maxIdx = -1;
+  let maxVal = -Infinity;
+  s.data.forEach((row, i) => {
+    const v = Number(row[s.yKey]);
+    if (Number.isFinite(v) && v > maxVal) {
+      maxVal = v;
+      maxIdx = i;
+    }
+  });
+
+  const yTickFormatter = (v: unknown) =>
+    formatValue(v, s.yKey, isPct).replace(/\s+/, "");
 
   switch (s.type) {
     case "line":
@@ -143,21 +214,23 @@ function renderChart(s: ChartSpec): ReactElement {
             label={{
               value: xLabel,
               position: "insideBottom",
-              offset: -16,
+              offset: -20,
               fill: AXIS,
               fontSize: 11,
+              fontWeight: 500,
             }}
           />
           <YAxis
             {...axisProps}
-            tickFormatter={formatTick}
+            tickFormatter={yTickFormatter}
             label={{
               value: yLabel,
               angle: -90,
               position: "insideLeft",
-              offset: 0,
+              offset: -4,
               fill: AXIS,
               fontSize: 11,
+              fontWeight: 500,
             }}
           />
           <Tooltip {...tooltipProps} />
@@ -167,17 +240,19 @@ function renderChart(s: ChartSpec): ReactElement {
             stroke={ACCENT}
             strokeWidth={2.5}
             dot={{ r: 3, fill: ACCENT, stroke: ACCENT }}
-            activeDot={{ r: 5 }}
+            activeDot={{ r: 6, stroke: ACCENT_HI, strokeWidth: 2 }}
+            animationDuration={600}
           />
         </LineChart>
       );
+
     case "area":
       return (
         <AreaChart data={s.data} margin={margin}>
           <defs>
             <linearGradient id="loom-area" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.45} />
-              <stop offset="100%" stopColor={ACCENT} stopOpacity={0.05} />
+              <stop offset="0%" stopColor={ACCENT} stopOpacity={0.55} />
+              <stop offset="100%" stopColor={ACCENT} stopOpacity={0.04} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
@@ -187,21 +262,23 @@ function renderChart(s: ChartSpec): ReactElement {
             label={{
               value: xLabel,
               position: "insideBottom",
-              offset: -16,
+              offset: -20,
               fill: AXIS,
               fontSize: 11,
+              fontWeight: 500,
             }}
           />
           <YAxis
             {...axisProps}
-            tickFormatter={formatTick}
+            tickFormatter={yTickFormatter}
             label={{
               value: yLabel,
               angle: -90,
               position: "insideLeft",
-              offset: 0,
+              offset: -4,
               fill: AXIS,
               fontSize: 11,
+              fontWeight: 500,
             }}
           />
           <Tooltip {...tooltipProps} />
@@ -209,11 +286,13 @@ function renderChart(s: ChartSpec): ReactElement {
             type="monotone"
             dataKey={s.yKey}
             stroke={ACCENT}
-            strokeWidth={2}
+            strokeWidth={2.5}
             fill="url(#loom-area)"
+            animationDuration={600}
           />
         </AreaChart>
       );
+
     case "bar":
     default:
       return (
@@ -221,7 +300,11 @@ function renderChart(s: ChartSpec): ReactElement {
           <defs>
             <linearGradient id="loom-bar" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={ACCENT} />
-              <stop offset="100%" stopColor={ACCENT_SOFT} />
+              <stop offset="100%" stopColor={ACCENT} stopOpacity={0.85} />
+            </linearGradient>
+            <linearGradient id="loom-bar-hi" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={ACCENT_HI} />
+              <stop offset="100%" stopColor={ACCENT} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke={GRID} strokeDasharray="3 3" vertical={false} />
@@ -232,33 +315,56 @@ function renderChart(s: ChartSpec): ReactElement {
             label={{
               value: xLabel,
               position: "insideBottom",
-              offset: -16,
+              offset: -20,
               fill: AXIS,
               fontSize: 11,
+              fontWeight: 500,
             }}
           />
           <YAxis
             {...axisProps}
-            tickFormatter={formatTick}
+            tickFormatter={yTickFormatter}
             label={{
               value: yLabel,
               angle: -90,
               position: "insideLeft",
-              offset: 0,
+              offset: -4,
               fill: AXIS,
               fontSize: 11,
+              fontWeight: 500,
             }}
           />
           <Tooltip {...tooltipProps} />
-          <Bar dataKey={s.yKey} fill="url(#loom-bar)" radius={[6, 6, 0, 0]} maxBarSize={56}>
+          <Bar
+            dataKey={s.yKey}
+            radius={[8, 8, 0, 0]}
+            maxBarSize={64}
+            animationDuration={650}
+          >
+            {s.data.map((_, i) => (
+              <Cell
+                key={i}
+                fill={i === maxIdx ? "url(#loom-bar-hi)" : "url(#loom-bar)"}
+                stroke={i === maxIdx ? ACCENT_HI : "transparent"}
+                strokeWidth={i === maxIdx ? 1 : 0}
+              />
+            ))}
             <LabelList
               dataKey={s.yKey}
               position="top"
-              formatter={(v: unknown) => formatTick(v)}
+              formatter={(v: unknown) => formatValue(v, s.yKey, isPct)}
               fill={AXIS}
               fontSize={11}
+              fontWeight={600}
             />
           </Bar>
+          {/* Dim ref colour kept in case future series compare */}
+          <defs>
+            <linearGradient id="loom-bar-dim" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={ACCENT_DIM} />
+              <stop offset="100%" stopColor={ACCENT_DIM} stopOpacity={0.6} />
+            </linearGradient>
+          </defs>
         </BarChart>
       );
   }
