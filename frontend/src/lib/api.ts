@@ -12,10 +12,11 @@
  */
 const BUILD_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
 // The literal token below is replaced at container start by the Dockerfile
-// entrypoint. If the token is still its un-substituted form, we know runtime
-// substitution didn't happen and we fall through to BUILD_BASE / same-origin.
+// entrypoint with whatever VITE_API_BASE_URL the runtime env carries. We
+// detect substitution by checking whether the value now looks like a URL
+// (starts with http/https). esbuild can't fold .startsWith() away.
 const RUNTIME_TOKEN = "__VITE_API_BASE_URL__";
-const RUNTIME_BASE = RUNTIME_TOKEN === "__" + "VITE_API_BASE_URL" + "__" ? "" : RUNTIME_TOKEN;
+const RUNTIME_BASE = RUNTIME_TOKEN.startsWith("http") ? RUNTIME_TOKEN : "";
 const API_BASE = (RUNTIME_BASE || BUILD_BASE).replace(/\/$/, "");
 
 function url(path: string): string {
