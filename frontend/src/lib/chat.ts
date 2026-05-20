@@ -29,7 +29,12 @@ export async function* streamChat(
   signal?: AbortSignal,
   conversationId?: string,
 ): AsyncGenerator<ChatStreamEvent> {
-  const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+  // See lib/api.ts for the full priority order — same logic, inlined so the
+  // streaming endpoint can be hit before the api module loads.
+  const BUILD_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
+  const RUNTIME_TOKEN = "__VITE_API_BASE_URL__";
+  const RUNTIME_BASE = RUNTIME_TOKEN === "__" + "VITE_API_BASE_URL" + "__" ? "" : RUNTIME_TOKEN;
+  const API_BASE = (RUNTIME_BASE || BUILD_BASE).replace(/\/$/, "");
   const chatUrl = API_BASE ? `${API_BASE}/api/chat` : "/api/chat";
   let res: Response;
   try {

@@ -1,13 +1,22 @@
 /**
  * Tiny fetch wrapper.
  *
- * - In dev: paths stay relative ("/api/...") so Vite's proxy forwards to the
- *   FastAPI server on :8001 (see vite.config.ts).
- * - In prod (Railway / any host): set `VITE_API_BASE_URL` at build time, e.g.
- *   "https://loom-backend.up.railway.app". Requests then go to
- *   `${VITE_API_BASE_URL}/api/...`. Leave it blank for same-origin deploys.
+ * API base URL resolution (in priority order):
+ *  1. Build-time `VITE_API_BASE_URL` — works for any classic Vite build
+ *  2. Runtime placeholder `__VITE_API_BASE_URL__` — replaced by the Docker
+ *     entrypoint via sed at container start, using whatever env var Railway
+ *     (or any host) supplies. This is the reliable path on platforms whose
+ *     build-arg pass-through is flaky.
+ *  3. Same-origin fallback — relative `/api/...` (works in dev via Vite's
+ *     proxy, or in prod if a reverse-proxy serves backend on the same host)
  */
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const BUILD_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
+// The literal token below is replaced at container start by the Dockerfile
+// entrypoint. If the token is still its un-substituted form, we know runtime
+// substitution didn't happen and we fall through to BUILD_BASE / same-origin.
+const RUNTIME_TOKEN = "__VITE_API_BASE_URL__";
+const RUNTIME_BASE = RUNTIME_TOKEN === "__" + "VITE_API_BASE_URL" + "__" ? "" : RUNTIME_TOKEN;
+const API_BASE = (RUNTIME_BASE || BUILD_BASE).replace(/\/$/, "");
 
 function url(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path;
