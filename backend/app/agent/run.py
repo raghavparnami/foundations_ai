@@ -32,9 +32,11 @@ MAX_TOOL_ROUNDS = 20
 # Patterns the model occasionally pastes back even when told not to. The UI
 # already renders charts and download chips, so any of this text is noise.
 _ARTIFACT_PATTERNS: list[re.Pattern[str]] = [
-    # Markdown image with /api/ src ([![alt](/api/charts/x)] or ![alt](/api/...))
-    re.compile(r"!\[[^\]]*\]\(/api/(?:charts|reports|presentations)/[^)]+\)\s*"),
-    # Markdown link to an artifact URL
+    # Any markdown image — chat never renders images, and the model keeps
+    # trying to inline a chart as ![Chart …](something) which becomes a
+    # broken-icon. Drop the whole token regardless of the URL it points at.
+    re.compile(r"!\[[^\]]*\]\([^)]*\)\s*"),
+    # Markdown link to an artifact URL (UI renders these as a chip).
     re.compile(r"\[[^\]]*\]\(/api/(?:charts|reports|presentations)/[^)]+\)\s*"),
     # Inline-code URL: `/api/charts/...`
     re.compile(r"`/api/(?:charts|reports|presentations)/[^`]+`\s*"),

@@ -427,6 +427,9 @@ function AssistantBubble({ parts }: { parts: AssistantPart[] }) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
+                // Chat never renders images. The model occasionally emits
+                // ![Chart …](some-url) which becomes a broken icon. Strip it.
+                img: () => null,
                 a: ({ href, children, ...rest }) => {
                   // Rewrite same-origin /api/* links to the absolute backend
                   // URL so they work when frontend and backend live on
