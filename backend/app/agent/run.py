@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, AsyncIterator, cast
 
 from openai.types.chat import (
@@ -27,6 +28,61 @@ from .tools import TOOLS, run_tool
 log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 20
+
+# Patterns the model occasionally pastes back even when told not to. The UI
+# already renders charts and download chips, so any of this text is noise.
+_ARTIFACT_PATTERNS: list[re.Pattern[str]] = [
+    # Markdown image with /api/ src ([![alt](/api/charts/x)] or ![alt](/api/...))
+    re.compile(r"!\[[^\]]*\]\(/api/(?:charts|reports|presentations)/[^)]+\)\s*"),
+    # Markdown link to an artifact URL
+    re.compile(r"\[[^\]]*\]\(/api/(?:charts|reports|presentations)/[^)]+\)\s*"),
+    # Inline-code URL: `/api/charts/...`
+    re.compile(r"`/api/(?:charts|reports|presentations)/[^`]+`\s*"),
+    # Whole "Access/View/Open ... at: /api/..." line (incl. an optional bold
+    # prefix and trailing newline).
+    re.compile(
+        r"(?:\*\*[^*\n]{0,80}?\*\*\s*[:\-]?\s*)?"
+        r"(?:You can\s+)?(?:Access|View|See|Open)[^\n]{0,80}?"
+        r"/api/(?:charts|reports|presentations)/[^\s\)`*\n]+\.?[^\n]*\n?",
+        re.IGNORECASE,
+    ),
+    # Bare URL anywhere
+    re.compile(r"/api/(?:charts|reports|presentations)/[A-Za-z0-9-_]+(?:/download)?"),
+]
+
+
+class _DeltaScrubber:
+    """Strip artifact-URL noise from the streamed assistant text.
+
+    The stream is token-by-token, so a regex match might span chunks. We hold
+    back the last HOLD chars of buffered text on every feed; on flush we emit
+    the remainder. HOLD must be larger than any single pattern we want to
+    catch (URLs + 'Access ... at:' prefix ≈ < 200 chars).
+    """
+
+    HOLD = 400
+
+    def __init__(self) -> None:
+        self._buf: str = ""
+
+    def feed(self, delta: str) -> str:
+        self._buf += delta
+        if len(self._buf) <= self.HOLD:
+            return ""
+        head = self._buf[: -self.HOLD]
+        self._buf = self._buf[-self.HOLD :]
+        return _scrub_artifacts(head)
+
+    def flush(self) -> str:
+        out = self._buf
+        self._buf = ""
+        return _scrub_artifacts(out)
+
+
+def _scrub_artifacts(s: str) -> str:
+    for pat in _ARTIFACT_PATTERNS:
+        s = pat.sub("", s)
+    return s
 
 
 async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
@@ -68,7 +124,9 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
             # Stream any preface text the model wrote alongside its tool call
             # so the user sees "I'll check X, then Y..." BEFORE the tools run.
             if msg.content:
-                yield _sse_event("delta", {"text": msg.content})
+                cleaned = _scrub_artifacts(msg.content)
+                if cleaned:
+                    yield _sse_event("delta", {"text": cleaned})
             assistant_payload: dict[str, Any] = {
                 "role": "assistant",
                 "content": msg.content or "",
@@ -118,12 +176,18 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
             messages=cast(list[ChatCompletionMessageParam], messages[:-1]),
             stream=True,
         )
+        scrubber = _DeltaScrubber()
         async for chunk in stream:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                yield _sse_event("delta", {"text": delta.content})
+                out = scrubber.feed(delta.content)
+                if out:
+                    yield _sse_event("delta", {"text": out})
+        tail = scrubber.flush()
+        if tail:
+            yield _sse_event("delta", {"text": tail})
         yield _sse_event("done", {})
         return
 
@@ -145,12 +209,18 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
             messages=cast(list[ChatCompletionMessageParam], messages),
             stream=True,
         )
+        scrubber = _DeltaScrubber()
         async for chunk in final_stream:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
             if delta and delta.content:
-                yield _sse_event("delta", {"text": delta.content})
+                out = scrubber.feed(delta.content)
+                if out:
+                    yield _sse_event("delta", {"text": out})
+        tail = scrubber.flush()
+        if tail:
+            yield _sse_event("delta", {"text": tail})
     except Exception as e:  # noqa: BLE001
         yield _sse_event(
             "error",
