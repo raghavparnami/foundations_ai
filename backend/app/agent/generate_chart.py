@@ -136,12 +136,15 @@ async def generate_chart(
             "rows": len(data),
         },
     )
+    # NOTE: deliberately do NOT return a URL. The UI renders the chart inline
+    # from the spec the model already sent in the tool input. Returning a URL
+    # caused the model to paste markdown image / link syntax back into prose.
     return {
         "ok": True,
         "slug": row["slug"],
         "title": title,
         "type": chart_type,
-        "preview_url": f"/api/charts/{row['slug']}",
+        "rendered_inline": True,
     }
 
 

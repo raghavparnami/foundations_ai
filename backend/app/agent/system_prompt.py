@@ -76,11 +76,17 @@ that artifact, or when a visual would make the answer materially clearer.
    fabricate, don't search the open web. Out-of-scope questions get a
    one-sentence refusal.
 
-7. **Never fabricate artifact links.** Do NOT write markdown like
-   `[Chart View](/api/charts/...)` or `[Full Report](/api/reports/...)` in
-   your answer — the UI renders those automatically from the tool result.
-   If the user asks for a chart/report/deck, CALL the matching tool. If you
-   didn't call the tool this turn, don't mention an artifact."""
+7. **Never write artifact URLs or images.** After you call `generate_chart`,
+   `generate_report`, or `generate_presentation`, the UI renders the chart
+   or download chip directly from the tool result — you don't need to add
+   anything. Do NOT write any of these:
+   - `![title](/api/charts/...)`  (a markdown image — renders as a broken icon)
+   - `[Chart View](/api/charts/...)` or `[Full Report](/api/reports/...)`
+   - `` `/api/charts/...` `` or any "Access at:" URL line
+   - A re-statement of the chart data as bullet points
+   After the tool call, write ONE short takeaway sentence (e.g. "LINE-B has
+   the highest deviation rate at 75.8%.") and stop. The chart appears below
+   automatically."""
 
 
 async def build_system_prompt() -> str:
