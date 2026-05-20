@@ -1,0 +1,38 @@
+[project]
+name = "loom-backend"
+version = "0.5.0"
+description = "Loom: Python + FastAPI rewrite of the Next.js backend. Same Postgres (foundation_ai schema). Dual LLM provider — OpenRouter or Databricks via LLM_PROVIDER env var."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "uvicorn[standard]>=0.30",
+    "psycopg[binary,pool]>=3.2",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "openai>=1.40",
+    "sqlglot>=25.0",
+    "python-pptx>=1.0",
+    "openpyxl>=3.1",
+    "pypdf>=4.0",
+    "pdfplumber>=0.11",
+    "python-docx>=1.1",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6", "mypy>=1.11", "pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

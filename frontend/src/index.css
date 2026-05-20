@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:           #fbfbfd;
+  --bg-elev:     #ffffff;
+  --bg-soft:     #f4f5f9;
+  --border:      #e7e9f1;
+  --border-strong:#d2d6e3;
+  --text:        #14152a;
+  --text-muted:  #5b6075;
+  --text-faint:  #9aa0b4;
+  --accent:      #5b6cff;
+  --accent-2:    #8a4dff;
+  --accent-soft: #eef0ff;
+  --user-bg:     #eef0ff;
+  --user-border: #c8cffd;
+  --gradient-hero: linear-gradient(120deg, #5b6cff 0%, #8a4dff 60%, #d36cff 100%);
+  --gradient-orb:  radial-gradient(circle at 30% 30%, #c8d0ff 0%, #b9a4ff 35%, #f4d4ff 65%, #ffffff 100%);
+  color-scheme: light;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e0e3ed; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #c8ccd9; }
+
+.prov-schema { color: #2563eb; }
+.prov-query  { color: #7c3aed; }
+.prov-claude { color: var(--accent); }
+.prov-human  { color: #b45309; }
+
+.gradient-text {
+  background: var(--gradient-hero);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.orb {
+  width: 88px;
+  height: 88px;
+  border-radius: 999px;
+  background: var(--gradient-orb);
+  filter: blur(0.3px);
+  box-shadow: 0 30px 80px -20px rgba(91, 108, 255, 0.45),
+              0 8px 32px -8px rgba(138, 77, 255, 0.35);
+  position: relative;
+  animation: orb-float 6s ease-in-out infinite;
+}
+.orb::after {
+  content: "";
+  position: absolute; inset: 0; border-radius: 999px;
+  background: radial-gradient(circle at 70% 70%, rgba(255,255,255,0) 40%, rgba(255,255,255,0.7) 100%);
+  mix-blend-mode: screen; opacity: 0.7;
+}
+@keyframes orb-float {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-6px); }
+}
+
+.input-pill {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 4px 16px -4px rgba(20, 21, 42, 0.04),
+              0 24px 60px -28px rgba(91, 108, 255, 0.18);
+  padding: 12px 14px;
+}
+.input-pill:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px -4px rgba(20, 21, 42, 0.06),
+              0 24px 60px -28px rgba(91, 108, 255, 0.28);
+}
+
+.action-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500;
+  padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-muted);
+  transition: all .15s ease;
+}
+.action-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.wiki-prose {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  max-width: 760px;
+}
+.wiki-prose h1 { font-size: 24px; font-weight: 600; margin: 1.4em 0 0.6em; letter-spacing: -0.01em; }
+.wiki-prose h2 { font-size: 18px; font-weight: 600; margin: 1.6em 0 0.5em; letter-spacing: -0.005em; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.wiki-prose h3 { font-size: 15px; font-weight: 600; margin: 1.2em 0 0.4em; color: var(--text); }
+.wiki-prose p  { margin: 0.7em 0; color: var(--text); }
+.wiki-prose ul { list-style: disc; padding-left: 1.4em; margin: 0.6em 0; }
+.wiki-prose ol { list-style: decimal; padding-left: 1.4em; margin: 0.6em 0; }
+.wiki-prose li { margin: 0.25em 0; }
+.wiki-prose code {
+  background: var(--bg-soft);
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  font-size: 0.86em;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.wiki-prose pre {
+  background: #0f1020;
+  color: #e2e5ff;
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0.9em 0;
+}
+.wiki-prose pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; }
+.wiki-prose blockquote {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 10px 14px;
+  margin: 0.9em 0;
+  color: var(--text);
+  border-radius: 0 6px 6px 0;
+  font-style: normal;
+}
+.wiki-prose blockquote p { margin: 0; }
+.wiki-prose table { border-collapse: collapse; margin: 0.8em 0; font-size: 13.5px; }
+.wiki-prose th, .wiki-prose td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.wiki-prose th { background: var(--bg-soft); font-weight: 600; }
+.wiki-prose a { color: var(--accent); text-decoration: none; }
+.wiki-prose a:hover { text-decoration: underline; }
+.wiki-prose hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+
+.tool-card {
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+}
+
+.markdown-doc h1, .markdown-doc h2, .markdown-doc h3 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+  color: var(--text);
+}
+.markdown-doc h1 { font-size: 1.25rem; }
+.markdown-doc h2 { font-size: 1.05rem; color: #374151; }
+.markdown-doc h3 { font-size: 0.95rem; color: #4b5563; }
+.markdown-doc p  { margin: 0.4em 0; line-height: 1.6; color: #27272a; }
+.markdown-doc code {
+  background: #f4f4f3;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: #18181b;
+}
+.markdown-doc pre {
+  background: #fafaf9;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+}
+.markdown-doc pre code { background: transparent; padding: 0; }
+.markdown-doc table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 0.85em;
+  width: 100%;
+}
+.markdown-doc th, .markdown-doc td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.markdown-doc th { background: #f4f4f3; color: #18181b; font-weight: 600; }
+.markdown-doc ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
+.markdown-doc li { margin: 0.2em 0; color: #27272a; }
+.markdown-doc strong { color: var(--text); }
