@@ -1,3 +1,5 @@
+import { apiUrl } from "../lib/api";
+
 export type DownloadKind = "report" | "presentation" | "chart";
 
 type DownloadChipProps = {
@@ -49,9 +51,9 @@ export default function DownloadChip({
 }
 
 function hrefFor(kind: DownloadKind, slug: string): string {
-  if (kind === "presentation") return `/api/presentations/${slug}/download`;
-  if (kind === "chart") return `/api/charts/${slug}/download`;
-  return `/api/reports/${slug}/download`;
+  if (kind === "presentation") return apiUrl(`/api/presentations/${slug}/download`);
+  if (kind === "chart") return apiUrl(`/api/charts/${slug}/download`);
+  return apiUrl(`/api/reports/${slug}/download`);
 }
 
 function KindIcon({ kind }: { kind: DownloadKind }) {

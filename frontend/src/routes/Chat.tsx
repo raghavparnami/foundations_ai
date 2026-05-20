@@ -5,6 +5,9 @@ import remarkGfm from "remark-gfm";
 import { streamChat, type ChatMessage } from "../lib/chat";
 import ToolCall, { type ToolPart } from "../components/ToolCall";
 import TodoPanel from "../components/TodoPanel";
+import ChartView, { type ChartSpec, type ChartType } from "../components/ChartView";
+import DownloadChip, { type DownloadKind } from "../components/DownloadChip";
+import { apiUrl } from "../lib/api";
 
 type TextPart = { type: "text"; text: string };
 type AssistantPart = TextPart | ToolPart;
@@ -421,14 +424,121 @@ function AssistantBubble({ parts }: { parts: AssistantPart[] }) {
       {parts.map((p, i) =>
         isTextPart(p) ? (
           <div key={i} className="markdown-doc text-sm">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{p.text}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ href, children, ...rest }) => {
+                  // Rewrite same-origin /api/* links to the absolute backend
+                  // URL so they work when frontend and backend live on
+                  // different Railway services.
+                  const rewritten =
+                    typeof href === "string" && href.startsWith("/api/")
+                      ? apiUrl(href)
+                      : href;
+                  const downloadable =
+                    typeof rewritten === "string" &&
+                    /\/(download|export)(\?|$)/.test(rewritten);
+                  return (
+                    <a
+                      href={rewritten}
+                      target="_blank"
+                      rel="noreferrer"
+                      {...(downloadable ? { download: "" } : {})}
+                      {...rest}
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {p.text}
+            </ReactMarkdown>
           </div>
         ) : (
-          <ToolCall key={i} part={p} />
+          <ArtifactOrToolCall key={i} part={p} />
         ),
       )}
     </div>
   );
+}
+
+function ArtifactOrToolCall({ part }: { part: ToolPart }) {
+  const name = part.type.replace(/^tool-/, "").replace(/^dynamic-tool-/, "");
+  const done = part.state === "output-available";
+
+  // For chart: render the chart card inline once the tool completes. Use the
+  // spec the model already sent as `input.spec` so we don't need a second fetch.
+  if (name === "generate_chart" && done) {
+    const slug = extractString(part.output, "slug");
+    const spec = chartSpecFromInput(part.input);
+    if (slug && spec) {
+      return <ChartView slug={slug} fallbackSpec={spec} />;
+    }
+  }
+
+  // For report / presentation: render a download chip.
+  if ((name === "generate_report" || name === "generate_presentation") && done) {
+    const slug = extractString(part.output, "slug");
+    const title =
+      extractString(part.output, "title") ||
+      extractString(part.input, "title") ||
+      slug ||
+      "Download";
+    const bytes = extractNumber(part.output, "bytes");
+    const kind: DownloadKind =
+      name === "generate_presentation" ? "presentation" : "report";
+    if (slug) {
+      return (
+        <DownloadChip
+          slug={slug}
+          kind={kind}
+          title={title}
+          {...(typeof bytes === "number" ? { bytes } : {})}
+        />
+      );
+    }
+  }
+
+  return <ToolCall part={part} />;
+}
+
+function extractString(v: unknown, key: string): string | undefined {
+  if (v && typeof v === "object" && key in (v as Record<string, unknown>)) {
+    const x = (v as Record<string, unknown>)[key];
+    if (typeof x === "string") return x;
+  }
+  return undefined;
+}
+
+function extractNumber(v: unknown, key: string): number | undefined {
+  if (v && typeof v === "object" && key in (v as Record<string, unknown>)) {
+    const x = (v as Record<string, unknown>)[key];
+    if (typeof x === "number") return x;
+  }
+  return undefined;
+}
+
+function chartSpecFromInput(input: unknown): ChartSpec | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const spec = (input as { spec?: unknown }).spec;
+  if (!spec || typeof spec !== "object") return undefined;
+  const s = spec as {
+    type?: unknown;
+    title?: unknown;
+    x_field?: unknown;
+    y_field?: unknown;
+    data?: unknown;
+  };
+  const type = typeof s.type === "string" ? (s.type as ChartType) : undefined;
+  const title = typeof s.title === "string" ? s.title : "";
+  const xKey = typeof s.x_field === "string" ? s.x_field : undefined;
+  const yKey = typeof s.y_field === "string" ? s.y_field : undefined;
+  const data = Array.isArray(s.data)
+    ? (s.data as Record<string, string | number>[])
+    : undefined;
+  if (!type || !xKey || !yKey || !data) return undefined;
+  return { type, title, xKey, yKey, data };
 }
 
 function WorkingIndicator({ text }: { text: string }) {
