@@ -19,13 +19,23 @@ declare global {
 // sets via an inline script. The Docker entrypoint sed-substitutes the
 // literal token `__VITE_API_BASE_URL__` in index.html at container start.
 // esbuild can't constant-fold a window global, so this runs at runtime.
+//
+// IMPORTANT: resolve the base URL ON EVERY REQUEST (not at module load).
+// If we cached API_BASE at top-level evaluation, edge cases where the
+// inline script hadn't run yet (CSP, async module loading order) would
+// freeze it to "" forever. Per-call resolution is cheap and idempotent.
 const BUILD_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
-const runtimeRaw = (typeof window !== "undefined" && window.__LOOM_API_BASE__) || "";
-const RUNTIME_BASE = runtimeRaw.startsWith("http") ? runtimeRaw : "";
-const API_BASE = (RUNTIME_BASE || BUILD_BASE).replace(/\/$/, "");
+
+function resolveApiBase(): string {
+  const runtimeRaw =
+    (typeof window !== "undefined" && window.__LOOM_API_BASE__) || "";
+  const runtime = runtimeRaw.startsWith("http") ? runtimeRaw : "";
+  return (runtime || BUILD_BASE).replace(/\/$/, "");
+}
 
 function url(path: string): string {
-  return API_BASE ? `${API_BASE}${path}` : path;
+  const base = resolveApiBase();
+  return base ? `${base}${path}` : path;
 }
 
 export class ApiError extends Error {
