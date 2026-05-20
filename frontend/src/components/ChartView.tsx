@@ -48,7 +48,7 @@ function isPercentField(key: string): boolean {
   return /(percent|pct|rate|share|ratio)/i.test(key);
 }
 
-function formatValue(v: unknown, key: string, isPct: boolean): string {
+function formatValue(v: unknown, _key: string, isPct: boolean): string {
   if (typeof v !== "number" || Number.isNaN(v)) return String(v ?? "");
   if (isPct) {
     // If looks like 0..1 fraction, scale to %. Otherwise treat as already %.
