@@ -10,13 +10,18 @@
  *  3. Same-origin fallback — relative `/api/...` (works in dev via Vite's
  *     proxy, or in prod if a reverse-proxy serves backend on the same host)
  */
+declare global {
+  interface Window {
+    __LOOM_API_BASE__?: string;
+  }
+}
+// Runtime API base — comes from window.__LOOM_API_BASE__ which index.html
+// sets via an inline script. The Docker entrypoint sed-substitutes the
+// literal token `__VITE_API_BASE_URL__` in index.html at container start.
+// esbuild can't constant-fold a window global, so this runs at runtime.
 const BUILD_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
-// The literal token below is replaced at container start by the Dockerfile
-// entrypoint with whatever VITE_API_BASE_URL the runtime env carries. We
-// detect substitution by checking whether the value now looks like a URL
-// (starts with http/https). esbuild can't fold .startsWith() away.
-const RUNTIME_TOKEN = "__VITE_API_BASE_URL__";
-const RUNTIME_BASE = RUNTIME_TOKEN.startsWith("http") ? RUNTIME_TOKEN : "";
+const runtimeRaw = (typeof window !== "undefined" && window.__LOOM_API_BASE__) || "";
+const RUNTIME_BASE = runtimeRaw.startsWith("http") ? runtimeRaw : "";
 const API_BASE = (RUNTIME_BASE || BUILD_BASE).replace(/\/$/, "");
 
 function url(path: string): string {

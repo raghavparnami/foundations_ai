@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>Loom</title>
+    <!--
+      Runtime API base URL — sed-substituted by the Docker entrypoint at
+      container start. esbuild can't constant-fold a window global, so the
+      `window.__LOOM_API_BASE__` reference in lib/api.ts is forced to be
+      evaluated at runtime (against whatever the entrypoint set this to).
+      If the entrypoint never runs (dev / local), the literal string below
+      stays as `__VITE_API_BASE_URL__` and api.ts falls back to same-origin.
+    -->
+    <script>
+      window.__LOOM_API_BASE__ = "__VITE_API_BASE_URL__";
+    </script>
   </head>
   <body>
     <div id="root"></div>
