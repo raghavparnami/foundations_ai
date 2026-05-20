@@ -1,0 +1,14 @@
+# Tell Railway/nixpacks: this is a Python service. Install via pip from
+# pyproject.toml, then start uvicorn on the port Railway provides.
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = [
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && pip install -e .",
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-access-log"

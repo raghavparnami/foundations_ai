@@ -15,4 +15,12 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    // Railway and most PaaS hosts give us a fixed port via $PORT. Allow any
+    // public host so Vite preview doesn't 403 the deployed URL with the
+    // "Blocked request. This host is not allowed." error.
+    port: Number(process.env.PORT) || 5173,
+    host: true,
+    allowedHosts: true,
+  },
 });

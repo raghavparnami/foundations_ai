@@ -1,0 +1,13 @@
+# Tell Railway/nixpacks: this is a Node service, install deps, build the
+# Vite bundle, then serve it via `vite preview` on the port Railway provides.
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run preview -- --host 0.0.0.0 --port $PORT"
