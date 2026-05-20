@@ -162,6 +162,26 @@ function renderChart(s: ChartSpec): ReactElement {
   const yLabel = humanLabel(s.yKey);
   const isPct = isPercentField(s.yKey);
 
+  // Auto-rotate x-axis labels when there are many bars or the labels are
+  // long. Without rotation Recharts overlaps them on top of each other.
+  const xValues = s.data.map((r) => String(r[s.xKey] ?? ""));
+  const maxLen = xValues.reduce((m, v) => Math.max(m, v.length), 0);
+  const longLabels = maxLen > 10 || s.data.length > 6;
+  const truncate18 = (raw: unknown) => {
+    const v = String(raw ?? "");
+    return v.length > 18 ? v.slice(0, 17) + "…" : v;
+  };
+
+  const xAxisExtra = longLabels
+    ? {
+        angle: -35,
+        textAnchor: "end" as const,
+        height: 72,
+        tickFormatter: truncate18,
+        interval: 0,
+      }
+    : { interval: 0 };
+
   const axisProps = {
     stroke: AXIS,
     tick: { fill: TICK, fontSize: 11, fontWeight: 500 },
@@ -187,7 +207,12 @@ function renderChart(s: ChartSpec): ReactElement {
     ] as [string, string],
   };
 
-  const margin = { top: 28, right: 28, bottom: 44, left: 24 };
+  const margin = {
+    top: 28,
+    right: 28,
+    bottom: longLabels ? 84 : 44,
+    left: 24,
+  };
 
   // Find max for bar highlighting.
   let maxIdx = -1;
@@ -211,10 +236,11 @@ function renderChart(s: ChartSpec): ReactElement {
           <XAxis
             dataKey={s.xKey}
             {...axisProps}
+            {...xAxisExtra}
             label={{
               value: xLabel,
               position: "insideBottom",
-              offset: -20,
+              offset: longLabels ? -4 : -20,
               fill: AXIS,
               fontSize: 11,
               fontWeight: 500,
@@ -259,10 +285,11 @@ function renderChart(s: ChartSpec): ReactElement {
           <XAxis
             dataKey={s.xKey}
             {...axisProps}
+            {...xAxisExtra}
             label={{
               value: xLabel,
               position: "insideBottom",
-              offset: -20,
+              offset: longLabels ? -4 : -20,
               fill: AXIS,
               fontSize: 11,
               fontWeight: 500,
@@ -311,11 +338,11 @@ function renderChart(s: ChartSpec): ReactElement {
           <XAxis
             dataKey={s.xKey}
             {...axisProps}
-            interval={0}
+            {...xAxisExtra}
             label={{
               value: xLabel,
               position: "insideBottom",
-              offset: -20,
+              offset: longLabels ? -4 : -20,
               fill: AXIS,
               fontSize: 11,
               fontWeight: 500,
