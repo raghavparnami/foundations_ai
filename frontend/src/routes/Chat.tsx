@@ -8,7 +8,6 @@ import TodoPanel from "../components/TodoPanel";
 import ChartView, { type ChartSpec, type ChartType } from "../components/ChartView";
 import DownloadChip, { type DownloadKind } from "../components/DownloadChip";
 import { apiUrl } from "../lib/api";
-import { useFlag } from "../lib/flags";
 import SituationRoom from "../features/situation_room/SituationRoom";
 
 type TextPart = { type: "text"; text: string };
@@ -21,13 +20,6 @@ function isTextPart(p: AssistantPart): p is TextPart {
 type Turn =
   | { id: string; role: "user"; text: string }
   | { id: string; role: "assistant"; parts: AssistantPart[] };
-
-const SUGGESTIONS = [
-  "What's our deviation rate by production line over the last 30 days?",
-  "Which equipment is most often involved in temperature deviations?",
-  "What % of quality checks failed yesterday, by parameter?",
-  "Which operator's runs had the most aborted statuses last week?",
-];
 
 const WORKING_LINES = [
   "Pulling on threads…",
@@ -43,15 +35,6 @@ const WORKING_LINES = [
   "Tracing column lineage…",
   "Brewing a fresh view…",
 ];
-
-function greeting(): string {
-  const h = new Date().getHours();
-  if (h < 5) return "Working late";
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  if (h < 22) return "Good evening";
-  return "Working late";
-}
 
 function newSlug(): string {
   return (
@@ -265,9 +248,11 @@ export default function Chat() {
     }
   }
 
-  const situationRoomEnabled = useFlag("situation_room_enabled");
+  // The Situation Room is now the canonical empty-state surface — no
+  // longer flag-gated. The legacy centered greeting + suggestion chips
+  // have been removed; see git history (pre-Phase-2) if you need them.
   const empty = turns.length === 0;
-  const showSituationRoom = situationRoomEnabled && empty;
+  const showSituationRoom = empty;
   const lastAssistant = [...turns]
     .reverse()
     .find((t): t is Extract<Turn, { role: "assistant" }> => t.role === "assistant");
@@ -281,11 +266,7 @@ export default function Chat() {
       <div className="flex flex-1 min-h-0">
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
           {empty ? (
-            showSituationRoom ? (
-              <SituationRoom onSubmit={(t) => void send(t)} />
-            ) : (
-              <EmptyHero onPick={(s) => void send(s)} />
-            )
+            <SituationRoom onSubmit={(t) => void send(t)} />
           ) : (
             <div className="px-6 py-6 space-y-5 max-w-[820px] mx-auto w-full">
               {turns.map((t) =>
@@ -374,42 +355,6 @@ export default function Chat() {
                 </button>
               )}
             </div>
-            {empty && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                <ActionChip
-                  iconName="bar"
-                  label="Run analysis"
-                  onClick={() => void send(SUGGESTIONS[0]!)}
-                />
-                <ActionChip
-                  iconName="chart"
-                  label="Generate chart"
-                  onClick={() =>
-                    void send(
-                      "Plot a chart of deviation rate by line for the last 30 days.",
-                    )
-                  }
-                />
-                <ActionChip
-                  iconName="doc"
-                  label="Write a report"
-                  onClick={() =>
-                    void send(
-                      "Write an executive summary report of yesterday's quality metrics.",
-                    )
-                  }
-                />
-                <ActionChip
-                  iconName="deck"
-                  label="Build a deck"
-                  onClick={() =>
-                    void send(
-                      "Build a 5-slide deck for the ops VP about this week's deviation hotspots.",
-                    )
-                  }
-                />
-              </div>
-            )}
           </div>
         </form>
       </div>
@@ -561,99 +506,6 @@ function WorkingIndicator({ text }: { text: string }) {
       <span className="italic">{text}</span>
     </div>
   );
-}
-
-function EmptyHero({ onPick }: { onPick: (s: string) => void }) {
-  return (
-    <div className="flex flex-col items-center text-center px-6 pt-20 pb-10">
-      <div className="orb mb-8" aria-hidden />
-      <h2 className="text-[34px] sm:text-[40px] leading-[1.1] font-semibold tracking-tight max-w-[680px]">
-        {greeting()}.
-        <br />
-        <span className="text-[var(--text-muted)] font-medium">How can I </span>
-        <span className="gradient-text font-semibold">assist you today?</span>
-      </h2>
-      <p className="text-[13px] text-[var(--text-muted)] mt-5 max-w-[520px]">
-        Loom already indexed your tables, generated docs, and inferred join
-        keys. Ask anything — I'll pull from the catalog, run read-only SQL,
-        and save useful views.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-8 w-full max-w-[640px]">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s}
-            onClick={() => onPick(s)}
-            className="text-left text-[13px] px-3.5 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text)] transition shadow-sm"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActionChip({
-  iconName,
-  label,
-  onClick,
-}: {
-  iconName: "bar" | "chart" | "doc" | "deck";
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} className="action-chip">
-      <ChipIcon name={iconName} />
-      {label}
-    </button>
-  );
-}
-
-function ChipIcon({ name }: { name: "bar" | "chart" | "doc" | "deck" }) {
-  const props = {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.6,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  switch (name) {
-    case "bar":
-      return (
-        <svg {...props}>
-          <path d="M3 21V9" />
-          <path d="M9 21V3" />
-          <path d="M15 21v-9" />
-          <path d="M21 21V6" />
-        </svg>
-      );
-    case "chart":
-      return (
-        <svg {...props}>
-          <polyline points="3 17 9 11 13 15 21 7" />
-          <polyline points="14 7 21 7 21 14" />
-        </svg>
-      );
-    case "doc":
-      return (
-        <svg {...props}>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-      );
-    case "deck":
-      return (
-        <svg {...props}>
-          <rect x="3" y="4" width="18" height="12" rx="1" />
-          <line x1="8" y1="20" x2="16" y2="20" />
-          <line x1="12" y1="16" x2="12" y2="20" />
-        </svg>
-      );
-  }
 }
 
 function Sparkle({ className }: { className?: string }) {
