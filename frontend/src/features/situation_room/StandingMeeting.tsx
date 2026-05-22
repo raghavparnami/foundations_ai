@@ -14,18 +14,39 @@
  * ledger entry. Phase 2 v1 keeps the visual mechanism but no real receipts.
  */
 import { useMemo, useState } from "react";
-import { SME_ROSTER } from "./fixtures";
+import { SME_ROSTER, getPersona } from "./fixtures";
 import { selectSMEs } from "./selectSMEs";
 import SMEColumn from "./SMEColumn";
 import type { SMEPersona } from "./types";
 
 type Props = {
   question: string;
+  /**
+   * Override the auto-selected panel. Used when the user clicks "Join
+   * briefing" on a pinned incident — the incident's `converging_sme_ids`
+   * become the panel directly, instead of running keyword selection.
+   */
+  forcedPanel?: readonly string[];
+  /** Optional pre-amble shown above the question. e.g. "Incident · started 13:04". */
+  contextLabel?: string;
   onClose: () => void;
 };
 
-export default function StandingMeeting({ question, onClose }: Props) {
-  const initial = useMemo(() => selectSMEs(question, SME_ROSTER), [question]);
+export default function StandingMeeting({
+  question,
+  forcedPanel,
+  contextLabel,
+  onClose,
+}: Props) {
+  const initial = useMemo(() => {
+    if (forcedPanel && forcedPanel.length > 0) {
+      const resolved = forcedPanel
+        .map((id) => getPersona(id))
+        .filter((p): p is SMEPersona => Boolean(p));
+      if (resolved.length > 0) return resolved;
+    }
+    return selectSMEs(question, SME_ROSTER);
+  }, [question, forcedPanel]);
   const [panel, setPanel] = useState<SMEPersona[]>(initial);
 
   const bench = SME_ROSTER.filter((p) => !panel.find((x) => x.id === p.id));
@@ -56,7 +77,7 @@ export default function StandingMeeting({ question, onClose }: Props) {
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="text-[10.5px] uppercase tracking-wider font-medium text-[var(--text-faint)]">
-            Standing Meeting · {cols} SME{cols === 1 ? "" : "s"} convened
+            {contextLabel ?? `Standing Meeting · ${cols} SME${cols === 1 ? "" : "s"} convened`}
           </div>
           <h2 className="mt-1 text-[15px] font-medium text-[var(--text)] leading-snug">
             {question}

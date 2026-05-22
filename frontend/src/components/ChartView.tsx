@@ -16,6 +16,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../lib/api";
+import { useTheme } from "../lib/theme";
 
 export type ChartType = "bar" | "line" | "area";
 
@@ -31,14 +32,38 @@ type ChartResponse = {
   chart?: { spec?: ChartSpec };
 };
 
-const ACCENT = "#5b6cff";
-const ACCENT_HI = "#8a4dff";
-const ACCENT_DIM = "#c8cdf2";
-const GRID = "#eceef5";
-const AXIS = "#5b6075";
-const TICK = "#9aa0b4";
-const TOOLTIP_BG = "#ffffff";
-const TOOLTIP_BORDER = "#d2d6e3";
+type Palette = {
+  ACCENT: string;
+  ACCENT_HI: string;
+  GRID: string;
+  AXIS: string;
+  TICK: string;
+  TOOLTIP_BG: string;
+  TOOLTIP_BORDER: string;
+  TOOLTIP_TEXT: string;
+};
+
+const LIGHT_PALETTE: Palette = {
+  ACCENT: "#5b6cff",
+  ACCENT_HI: "#8a4dff",
+  GRID: "#eceef5",
+  AXIS: "#5b6075",
+  TICK: "#9aa0b4",
+  TOOLTIP_BG: "#ffffff",
+  TOOLTIP_BORDER: "#d2d6e3",
+  TOOLTIP_TEXT: "#14152a",
+};
+
+const DARK_PALETTE: Palette = {
+  ACCENT: "#8a93ff",
+  ACCENT_HI: "#b07cff",
+  GRID: "#2a2d3a",
+  AXIS: "#9095a8",
+  TICK: "#6b6f80",
+  TOOLTIP_BG: "#161823",
+  TOOLTIP_BORDER: "#3a3e50",
+  TOOLTIP_TEXT: "#e8e9f0",
+};
 
 function humanLabel(key: string): string {
   return key.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
@@ -88,6 +113,8 @@ export default function ChartView({
   }, [slug, spec]);
 
   const summary = useMemo(() => buildSummary(spec), [spec]);
+  const { resolved } = useTheme();
+  const p: Palette = resolved === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
 
   if (!spec) {
     return (
@@ -112,7 +139,7 @@ export default function ChartView({
           <div className="text-right shrink-0">
             <div
               className="text-[18px] font-semibold leading-none"
-              style={{ color: ACCENT }}
+              style={{ color: p.ACCENT }}
             >
               {summary.maxLabel}
             </div>
@@ -124,7 +151,7 @@ export default function ChartView({
       </figcaption>
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
-          {renderChart(spec)}
+          {renderChart(spec, p)}
         </ResponsiveContainer>
       </div>
     </figure>
@@ -157,10 +184,11 @@ function buildSummary(
   };
 }
 
-function renderChart(s: ChartSpec): ReactElement {
+function renderChart(s: ChartSpec, p: Palette): ReactElement {
   const xLabel = humanLabel(s.xKey);
   const yLabel = humanLabel(s.yKey);
   const isPct = isPercentField(s.yKey);
+  const { ACCENT, ACCENT_HI, GRID, AXIS, TICK, TOOLTIP_BG, TOOLTIP_BORDER, TOOLTIP_TEXT } = p;
 
   // Auto-rotate x-axis labels when there are many bars or the labels are
   // long. Without rotation Recharts overlaps them on top of each other.
@@ -196,7 +224,7 @@ function renderChart(s: ChartSpec): ReactElement {
       border: `1px solid ${TOOLTIP_BORDER}`,
       borderRadius: 10,
       fontSize: 12,
-      color: "#14152a",
+      color: TOOLTIP_TEXT,
       boxShadow: "0 6px 24px rgba(20, 21, 42, 0.10)",
       padding: "8px 12px",
     },

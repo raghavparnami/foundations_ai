@@ -19,7 +19,11 @@ import PinnedIncident from "./PinnedIncident";
 import SMEStation from "./SMEStation";
 import CommandBar from "./CommandBar";
 import StandingMeeting from "./StandingMeeting";
-import type { SituationRoomSnapshot } from "./types";
+import type { PinnedIncident as Incident, SituationRoomSnapshot } from "./types";
+
+type MeetingState =
+  | { kind: "ad-hoc"; question: string }
+  | { kind: "briefing"; question: string; converging: string[]; contextLabel: string };
 
 const POLL_MS = 30_000;
 
@@ -38,7 +42,16 @@ export default function SituationRoom(_props: Props) {
     getSnapshot(),
   );
   const [now, setNow] = useState<Date>(() => new Date());
-  const [meetingQuestion, setMeetingQuestion] = useState<string | null>(null);
+  const [meeting, setMeeting] = useState<MeetingState | null>(null);
+
+  function openBriefing(incident: Incident): void {
+    setMeeting({
+      kind: "briefing",
+      question: incident.headline,
+      converging: incident.converging_sme_ids,
+      contextLabel: `Briefing · ${incident.subtext}`,
+    });
+  }
 
   // Poll the fixture every 30s — when the real endpoint lands, swap
   // getSnapshot() for a fetch and the rest of the component is unchanged.
@@ -90,7 +103,10 @@ export default function SituationRoom(_props: Props) {
       >
         {/* 2. Pinned incident */}
         {snapshot.pinned_incident && (
-          <PinnedIncident incident={snapshot.pinned_incident} />
+          <PinnedIncident
+            incident={snapshot.pinned_incident}
+            onJoinBriefing={openBriefing}
+          />
         )}
 
         {/* 3. SME grid */}
@@ -112,18 +128,27 @@ export default function SituationRoom(_props: Props) {
         </div>
       </div>
 
-      {/* 4. Standing Meeting (Phase 2) — opens below the grid on submit. */}
-      {meetingQuestion && (
+      {/* 4. Standing Meeting (Phase 2) — opens below the grid on submit or
+              when the user clicks "Join briefing" on a pinned incident. */}
+      {meeting && (
         <StandingMeeting
-          key={meetingQuestion}
-          question={meetingQuestion}
-          onClose={() => setMeetingQuestion(null)}
+          key={`${meeting.kind}-${meeting.question}`}
+          question={meeting.question}
+          forcedPanel={
+            meeting.kind === "briefing" ? meeting.converging : undefined
+          }
+          contextLabel={
+            meeting.kind === "briefing" ? meeting.contextLabel : undefined
+          }
+          onClose={() => setMeeting(null)}
         />
       )}
 
       {/* 5. Command bar */}
       <div className="mt-1">
-        <CommandBar onSubmit={(t) => setMeetingQuestion(t)} />
+        <CommandBar
+          onSubmit={(t) => setMeeting({ kind: "ad-hoc", question: t })}
+        />
         <p className="mt-2 text-[10.5px] text-[var(--text-faint)] text-center">
           Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-soft)] border border-[var(--border)] text-[10px]">⌘K</kbd> to focus the bar. Asking convenes a Standing Meeting.
         </p>

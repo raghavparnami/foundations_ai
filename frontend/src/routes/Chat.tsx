@@ -268,15 +268,17 @@ export default function Chat() {
           {empty ? (
             <SituationRoom onSubmit={(t) => void send(t)} />
           ) : (
-            <div className="px-6 py-6 space-y-5 max-w-[820px] mx-auto w-full">
-              {turns.map((t) =>
-                t.role === "user" ? (
-                  <UserBubble key={t.id} text={t.text} />
-                ) : (
-                  <AssistantBubble key={t.id} parts={t.parts} />
-                ),
-              )}
-              {busy && <WorkingIndicator text={WORKING_LINES[workIdx]!} />}
+            <div className="px-6 py-6 min-h-full flex flex-col justify-end max-w-[820px] mx-auto w-full">
+              <div className="space-y-5">
+                {turns.map((t) =>
+                  t.role === "user" ? (
+                    <UserBubble key={t.id} text={t.text} />
+                  ) : (
+                    <AssistantBubble key={t.id} parts={t.parts} />
+                  ),
+                )}
+                {busy && <WorkingIndicator text={WORKING_LINES[workIdx]!} />}
+              </div>
             </div>
           )}
         </div>

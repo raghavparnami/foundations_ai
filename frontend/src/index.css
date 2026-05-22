@@ -31,6 +31,30 @@
   color-scheme: light;
 }
 
+/* Dark mode palette. The theme manager toggles
+   `<html data-theme="dark">`; everything below re-paints accordingly.
+   Persona brand colors (Marcus violet, IRIS terracotta, etc.) stay as
+   they are in fixtures.ts — those are identity, not chrome. */
+:root[data-theme="dark"] {
+  --bg:           #0d0e16;
+  --bg-elev:      #161823;
+  --bg-soft:      #1c1e2a;
+  --border:       #2a2d3a;
+  --border-strong:#3a3e50;
+  --text:         #e8e9f0;
+  --text-muted:   #9095a8;
+  --text-faint:   #6b6f80;
+  --accent:       #8a93ff;
+  --accent-2:     #b07cff;
+  --accent-soft:  #252946;
+  --user-bg:      #252946;
+  --user-border:  #3a3f6d;
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #2a2d3a; }
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #3a3e50; }
+
 html, body {
   height: 100%;
   background: var(--bg);
