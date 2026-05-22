@@ -112,31 +112,77 @@ export default function SMEStation({ persona, station, onConvene }: Props) {
         <p className="mt-2 text-[12.5px] leading-snug text-[var(--text)]">
           {station.current_finding}
         </p>
+
+        {/* Skills / domain chips + learned-count. Sits inside the
+            card-click button so a click anywhere on the card still
+            opens the meeting. */}
+        <div className="mt-3 flex flex-wrap gap-1 items-center">
+          {persona.domain.slice(0, 4).map((d) => (
+            <span
+              key={d}
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+              style={{
+                background: "var(--bg-soft)",
+                color: "var(--text-muted)",
+                border: "0.5px solid var(--color-border-tertiary)",
+              }}
+            >
+              {d}
+            </span>
+          ))}
+          {knowledgeCount > 0 && (
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+              title={`${knowledgeCount} user-taught note${knowledgeCount === 1 ? "" : "s"}`}
+              style={{
+                background: persona.color.bg,
+                color: persona.color.fg,
+                border: `0.5px solid ${persona.color.fg}33`,
+              }}
+            >
+              +{knowledgeCount} learned
+            </span>
+          )}
+        </div>
       </button>
 
-      {/* Teach button — sits absolute top-right of the card so the
-          underlying button still owns the rest of the card click area. */}
+      {/* Teach button — uniform 24×24 icon-only at the top-right. The
+          underlying button owns the rest of the card click area; this
+          floats above it with stopPropagation. */}
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation();
           setTeachOpen(true);
         }}
-        title={`Teach ${persona.name} (${knowledgeCount} notes)`}
+        title={
+          knowledgeCount > 0
+            ? `Teach ${persona.name} — ${knowledgeCount} note${knowledgeCount === 1 ? "" : "s"}`
+            : `Teach ${persona.name}`
+        }
         aria-label={`Teach ${persona.name}, ${knowledgeCount} notes`}
-        className="absolute top-2 right-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10.5px] text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--bg-soft)] transition"
+        className="absolute top-2 right-2 w-6 h-6 inline-flex items-center justify-center rounded-md text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--bg-soft)] transition"
       >
         <svg
-          width="11" height="11" viewBox="0 0 24 24"
+          width="12" height="12" viewBox="0 0 24 24"
           fill="none" stroke="currentColor" strokeWidth="1.7"
           strokeLinecap="round" strokeLinejoin="round" aria-hidden
         >
           <path d="M12 20h9" />
           <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z" />
         </svg>
-        <span className="font-medium">
-          Teach{knowledgeCount > 0 ? ` · ${knowledgeCount}` : ""}
-        </span>
+        {knowledgeCount > 0 && (
+          <span
+            aria-hidden
+            className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-semibold leading-none"
+            style={{
+              background: persona.color.fg,
+              color: "#fff",
+            }}
+          >
+            {knowledgeCount}
+          </span>
+        )}
       </button>
     </div>
     {teachOpen && (
