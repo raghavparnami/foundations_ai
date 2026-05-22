@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.db import shutdown_pool, show_search_path, startup_pool
 from app.llm import chat_model_id, provider_label
 from app.routes import (
+    admin,
     catalog,
     chat,
     connections,
@@ -88,3 +89,4 @@ app.include_router(insights.router, prefix="/api/insights")
 app.include_router(media.charts_router, prefix="/api/charts")
 app.include_router(media.reports_router, prefix="/api/reports")
 app.include_router(media.presentations_router, prefix="/api/presentations")
+app.include_router(admin.router, prefix="/api/admin")

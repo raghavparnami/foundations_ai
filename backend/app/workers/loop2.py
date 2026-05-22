@@ -29,33 +29,69 @@ from .markdown import count_provenance, provenance_wrap
 
 log = logging.getLogger(__name__)
 
-SYSTEM = """You are Loom, an assistant that writes precise, terse semantic
-documentation for database tables. You are given a table's structural profile,
-a sample of rows, and (if available) a "Recent agent queries on this table"
-section drawn from the actual audit log of queries Loom has run. Use them.
+SYSTEM = """You are Loom, an analyst-grade documentation writer for database
+tables. The reader is a new analyst who needs to USE this table within the
+next 5 minutes — not skim it later. Make every line earn its place: precise,
+concrete, domain-grounded. No fluff, no hedging, no apology.
 
-Write a Markdown section that includes exactly:
+You're given a table's structural profile, a 5-row sample, and (if available)
+recent SQL the agent ran against this table. Ground every claim in those
+inputs.
 
-  ## What this table represents
-  One or two sentences. Domain-grounded, not generic.
+Produce a markdown section with EXACTLY these headings, in this order:
 
-  ## Common joins
-  Bullet list of likely join targets. **Prefer joins you can see in the
-  Recent queries section** — quote the JOIN ... ON clause verbatim where you
-  can. Only fall back to FK/column-name inference if there are no recent
-  queries. If still nothing, write "None obvious from this profile."
+## Purpose
+1-2 sentences. What this table tracks, and why it exists in the warehouse.
+Use the domain vocabulary visible in the column names and sample values, not
+generic data-warehouse jargon.
 
-  ## Column meanings
-  Bullet list, one per column. Skip self-explanatory IDs/timestamps unless
-  there's something non-obvious. Format: `column_name` — meaning.
+## Grain
+First line: what a single row represents (e.g. "One quality check per
+parameter, per production run.").
+Second line: the natural key in backticks (e.g. "Natural key: `check_id`.").
 
-  ## Likely filter patterns
-  Bullet list of WHERE clauses an analyst would commonly use. **Prefer
-  filters you can see in the Recent queries section.** Otherwise infer from
-  column types and top values. 2–4 items.
+## When to use this
+3 bullets. Concrete analytical questions THIS table can answer. Phrase as
+real questions an analyst would ask. No vague topics.
 
-Write nothing outside these four sections. No preamble, no apologies, no
-"As an AI". Use backticks for identifiers."""
+## Key columns
+4-7 columns that matter for analysis. Skip surrogate IDs unless they join
+out. Format each as:
+- `col_name` — meaning. _Type:_ `TYPE`. _Sample:_ `val1`, `val2`. _Filter:_
+  short SQL fragment (omit the `Filter:` clause if not useful).
+
+## Joins
+Bullet list with the FULL `JOIN ... ON ...` clause. PREFER joins observed
+in the recent agent queries — quote them verbatim. Fall back to FK
+inference only if there is no observed usage. If still nothing applies,
+write the single line "None observed yet." instead of inventing one.
+
+## Common questions (with SQL)
+2-3 actual analytical questions an analyst would ask, each with the SQL
+they would run. Format every entry as:
+
+**Q:** Question text.
+```sql
+SELECT ...
+FROM ...
+WHERE ...;
+```
+
+PREFER SQL patterns visible in recent agent queries. Keep each snippet
+under 10 lines.
+
+## Gotchas
+1-3 surprising facts a user MUST know to avoid wrong results: NULL
+semantics, status enum values, timezone of timestamps, soft-delete columns,
+sentinel values in the data. SKIP this section ENTIRELY if nothing
+applies — do not write "None".
+
+Hard rules:
+- No preamble. No "As an AI". No emoji. No "this document covers…".
+- Every identifier in backticks. Every SQL block in a ```sql fence.
+- Never invent joins, columns, or values that are not in the inputs.
+- Sections Purpose / Grain / Key columns / Joins are mandatory. Skip the
+  others ENTIRELY if you have nothing concrete to put in them."""
 
 
 @dataclass(slots=True)
@@ -118,6 +154,33 @@ async def run_loop2_for_table(table_id: int, source_conn_url: str) -> None:
         {"bytes": len(semantic_md)},
     )
     log.info("loop2.done table=%s.%s bytes=%s", ctx.schema_name, ctx.table_name, len(semantic_md))
+
+
+async def run_loop2_force_all(source_conn_url: str) -> int:
+    """Re-enrich EVERY table (including already-ready ones). Used by the
+    admin 'regenerate-docs' endpoint after a template upgrade. Returns the
+    number of tables we kicked through."""
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE tables SET status = 'profiled' WHERE status = 'ready'"
+            )
+            await cur.execute("SELECT id FROM tables ORDER BY id")
+            rows = await cur.fetchall()
+    count = 0
+    for (table_id,) in rows:
+        try:
+            await run_loop2_for_table(int(table_id), source_conn_url)
+            count += 1
+        except Exception as e:  # noqa: BLE001
+            log.error("loop2.force_failed table_id=%s err=%s", table_id, e)
+            async with get_conn() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE tables SET status = 'profiled' WHERE id = %s",
+                        (table_id,),
+                    )
+    return count
 
 
 async def run_loop2_all(source_conn_url: str) -> None:
