@@ -23,7 +23,10 @@ export default function HistoryList() {
       try {
         const j = await api.get<{ conversations?: Convo[] }>("/api/conversations");
         if (!alive) return;
-        setConvos(j.conversations ?? []);
+        // Drop synthetic Standing Meeting columns — they share the chat
+        // pipeline but aren't user-visible conversations.
+        const list = (j.conversations ?? []).filter((c) => !c.id.startsWith("sm-"));
+        setConvos(list);
       } catch {
         /* swallow */
       }

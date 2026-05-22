@@ -18,19 +18,27 @@ import { getPersona, getSnapshot } from "./fixtures";
 import PinnedIncident from "./PinnedIncident";
 import SMEStation from "./SMEStation";
 import CommandBar from "./CommandBar";
+import StandingMeeting from "./StandingMeeting";
 import type { SituationRoomSnapshot } from "./types";
 
 const POLL_MS = 30_000;
 
 type Props = {
-  onSubmit: (text: string) => void;
+  /**
+   * Optional handoff into the legacy chat pipeline. Unused in Phase 2 — the
+   * command bar now opens an inline Standing Meeting below the grid instead
+   * of replacing the whole view with a chat thread. Kept for compatibility
+   * and for the "Accept finding" path Phase 3 will add.
+   */
+  onSubmit?: (text: string) => void;
 };
 
-export default function SituationRoom({ onSubmit }: Props) {
+export default function SituationRoom(_props: Props) {
   const [snapshot, setSnapshot] = useState<SituationRoomSnapshot>(() =>
     getSnapshot(),
   );
   const [now, setNow] = useState<Date>(() => new Date());
+  const [meetingQuestion, setMeetingQuestion] = useState<string | null>(null);
 
   // Poll the fixture every 30s — when the real endpoint lands, swap
   // getSnapshot() for a fetch and the rest of the component is unchanged.
@@ -104,11 +112,20 @@ export default function SituationRoom({ onSubmit }: Props) {
         </div>
       </div>
 
-      {/* 4. Command bar */}
+      {/* 4. Standing Meeting (Phase 2) — opens below the grid on submit. */}
+      {meetingQuestion && (
+        <StandingMeeting
+          key={meetingQuestion}
+          question={meetingQuestion}
+          onClose={() => setMeetingQuestion(null)}
+        />
+      )}
+
+      {/* 5. Command bar */}
       <div className="mt-1">
-        <CommandBar onSubmit={onSubmit} />
+        <CommandBar onSubmit={(t) => setMeetingQuestion(t)} />
         <p className="mt-2 text-[10.5px] text-[var(--text-faint)] text-center">
-          Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-soft)] border border-[var(--border)] text-[10px]">⌘K</kbd> to focus the bar.
+          Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-soft)] border border-[var(--border)] text-[10px]">⌘K</kbd> to focus the bar. Asking convenes a Standing Meeting.
         </p>
       </div>
     </section>
