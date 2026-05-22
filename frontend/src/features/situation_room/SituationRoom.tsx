@@ -14,14 +14,14 @@
  *   4. Command bar    — pinned to bottom of the content area (not viewport)
  */
 import { useEffect, useMemo, useState } from "react";
-import { getPersona, getSnapshot } from "./fixtures";
+import { getPersona } from "./fixtures";
 import PinnedIncident from "./PinnedIncident";
 import SMEStation from "./SMEStation";
 import CommandBar from "./CommandBar";
 import StandingMeeting from "./StandingMeeting";
+import { useSnapshot } from "./useSnapshot";
 import type {
   PinnedIncident as Incident,
-  SituationRoomSnapshot,
   SMEPersona,
   SMEStation as SMEStationType,
 } from "./types";
@@ -31,7 +31,6 @@ type MeetingState =
   | { kind: "briefing"; question: string; converging: string[]; contextLabel: string }
   | { kind: "sme"; question: string; smeId: string; contextLabel: string };
 
-const POLL_MS = 30_000;
 
 type Props = {
   /**
@@ -44,9 +43,7 @@ type Props = {
 };
 
 export default function SituationRoom(_props: Props) {
-  const [snapshot, setSnapshot] = useState<SituationRoomSnapshot>(() =>
-    getSnapshot(),
-  );
+  const { snapshot, source, lastError } = useSnapshot();
   const [now, setNow] = useState<Date>(() => new Date());
   const [meeting, setMeeting] = useState<MeetingState | null>(null);
 
@@ -68,13 +65,6 @@ export default function SituationRoom(_props: Props) {
     });
   }
 
-  // Poll the fixture every 30s — when the real endpoint lands, swap
-  // getSnapshot() for a fetch and the rest of the component is unchanged.
-  useEffect(() => {
-    const iv = setInterval(() => setSnapshot(getSnapshot()), POLL_MS);
-    return () => clearInterval(iv);
-  }, []);
-
   // Plant-time tick (every minute).
   useEffect(() => {
     const iv = setInterval(() => setNow(new Date()), 60_000);
@@ -95,6 +85,20 @@ export default function SituationRoom(_props: Props) {
           Situation Room · <span style={{ letterSpacing: "0.08em" }}>{snapshot.shift_label}</span>
         </span>
         <span className="text-[var(--text-faint)] font-medium flex items-center gap-2 normal-case tracking-normal text-[11.5px]">
+          <span
+            title={
+              source === "live"
+                ? "Live from /api/situation-room/snapshot"
+                : (lastError ?? "Falling back to fixture")
+            }
+            className="text-[10px] uppercase tracking-wider font-medium"
+            style={{
+              color: source === "live" ? "#1D9E75" : "#B4B2A9",
+            }}
+          >
+            {source === "live" ? "● Live" : "○ Fixture"}
+          </span>
+          <span aria-hidden>·</span>
           <span>{plantTime} plant time</span>
           <span aria-hidden>·</span>
           <span className="flex items-center gap-1.5">

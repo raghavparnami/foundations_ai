@@ -27,6 +27,7 @@ from app.routes import (
     projects,
     proposals,
     setup,
+    situation_room,
     skills,
     wiki,
 )
@@ -90,3 +91,4 @@ app.include_router(media.charts_router, prefix="/api/charts")
 app.include_router(media.reports_router, prefix="/api/reports")
 app.include_router(media.presentations_router, prefix="/api/presentations")
 app.include_router(admin.router, prefix="/api/admin")
+app.include_router(situation_room.router, prefix="/api/situation-room")
