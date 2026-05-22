@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { streamChat } from "../../lib/chat";
+import { streamDeliberate } from "./streamDeliberate";
 import { SMEIcon } from "./icons";
 import type { SMEPersona } from "./types";
 
@@ -22,12 +22,20 @@ type Status = "thinking" | "answering" | "done" | "error";
 type Props = {
   persona: SMEPersona;
   question: string;
+  /** Live finding from /api/situation-room/snapshot. Injected as context so
+   *  the model doesn't need to walk the catalog itself — single LLM call,
+   *  no tool loop. */
+  contextFinding?: string | null;
   disagreeing?: boolean;
 };
 
-export default function SMEColumn({ persona, question, disagreeing }: Props) {
+export default function SMEColumn({
+  persona,
+  question,
+  contextFinding,
+  disagreeing,
+}: Props) {
   const [text, setText] = useState("");
-  const [toolCount, setToolCount] = useState(0);
   const [status, setStatus] = useState<Status>("thinking");
   const [error, setError] = useState<string | null>(null);
   const ctrlRef = useRef<AbortController | null>(null);
@@ -44,42 +52,22 @@ export default function SMEColumn({ persona, question, disagreeing }: Props) {
   useEffect(() => {
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
-    const slug = `sm-${persona.id}-${Date.now().toString(36)}`;
     const prefix = buildPersonaPrefix(persona);
 
     (async () => {
       try {
-        // The chat agent narrates its tool calls ("Let me check the wiki…")
-        // as `delta` events BEFORE the answer. Every SME's narration looks
-        // identical, which makes columns appear duplicated.
-        //
-        // Filter: only show deltas that arrive AFTER the most recent
-        // tool_output. Every tool_start clears the buffer so any narration
-        // that snuck in between rounds is dropped. If the stream never
-        // calls a tool, all deltas are shown (no narration to hide).
-        let inFlight = 0;
-        let toolsEverStarted = false;
-        for await (const ev of streamChat(
-          [{ role: "user", content: prefix + "\n\nQuestion: " + question }],
+        for await (const ev of streamDeliberate(
+          {
+            sme_id: persona.id,
+            question,
+            persona_prompt: prefix,
+            context_finding: contextFinding ?? null,
+          },
           ctrl.signal,
-          slug,
         )) {
-          if (ev.type === "tool_start") {
-            inFlight += 1;
-            toolsEverStarted = true;
-            setText("");
-            setToolCount((n) => n + 1);
-          } else if (ev.type === "tool_output") {
-            inFlight = Math.max(0, inFlight - 1);
-          } else if (ev.type === "delta") {
-            // Show the delta if: no tools have fired yet (whole stream is
-            // the answer), OR all started tools have completed (we're in
-            // the post-tool answer phase).
-            const showable = !toolsEverStarted || inFlight === 0;
-            if (showable) {
-              setStatus("answering");
-              setText((t) => t + ev.text);
-            }
+          if (ev.type === "delta") {
+            setStatus("answering");
+            setText((t) => t + ev.text);
           } else if (ev.type === "done") {
             setStatus("done");
           } else if (ev.type === "error") {
@@ -142,9 +130,7 @@ export default function SMEColumn({ persona, question, disagreeing }: Props) {
               className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
               style={{ background: accent }}
             />
-            {toolCount === 0
-              ? "Consulting catalog…"
-              : `Consulting catalog · ${toolCount} source${toolCount === 1 ? "" : "s"}…`}
+            Drafting view…
           </div>
         )}
         {status === "error" && (

@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { SME_ROSTER, getPersona } from "./fixtures";
 import { selectSMEs } from "./selectSMEs";
 import SMEColumn from "./SMEColumn";
-import type { SMEPersona } from "./types";
+import type { SMEPersona, SMEStation } from "./types";
 
 type Props = {
   question: string;
@@ -29,6 +29,10 @@ type Props = {
   forcedPanel?: readonly string[];
   /** Optional pre-amble shown above the question. e.g. "Incident · started 13:04". */
   contextLabel?: string;
+  /** Live findings keyed by sme_id (from /api/situation-room/snapshot). Passed
+   *  through to each SME column so the LLM can analyse directly instead of
+   *  re-querying the catalog. */
+  findings?: Record<string, SMEStation>;
   onClose: () => void;
 };
 
@@ -36,6 +40,7 @@ export default function StandingMeeting({
   question,
   forcedPanel,
   contextLabel,
+  findings,
   onClose,
 }: Props) {
   const initial = useMemo(() => {
@@ -112,6 +117,7 @@ export default function StandingMeeting({
             key={persona.id}
             persona={persona}
             question={question}
+            contextFinding={findings?.[persona.id]?.current_finding ?? null}
           />
         ))}
       </div>

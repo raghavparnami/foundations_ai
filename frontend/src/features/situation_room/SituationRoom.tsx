@@ -164,6 +164,9 @@ export default function SituationRoom(_props: Props) {
           contextLabel={
             meeting.kind === "ad-hoc" ? undefined : meeting.contextLabel
           }
+          findings={Object.fromEntries(
+            snapshot.stations.map((s) => [s.sme_id, s]),
+          )}
           onClose={() => setMeeting(null)}
         />
       )}

@@ -29,6 +29,7 @@ from app.routes import (
     setup,
     situation_room,
     skills,
+    sme,
     wiki,
 )
 from app.workers.scheduler import stop_scheduler
@@ -92,3 +93,4 @@ app.include_router(media.reports_router, prefix="/api/reports")
 app.include_router(media.presentations_router, prefix="/api/presentations")
 app.include_router(admin.router, prefix="/api/admin")
 app.include_router(situation_room.router, prefix="/api/situation-room")
+app.include_router(sme.router, prefix="/api/sme")
