@@ -41,6 +41,9 @@ export type SMEStation = {
   /** One-line current finding (max ~80 chars). */
   current_finding: string;
   last_updated: ISOTimestamp;
+  /** 7 daily samples (oldest → newest), nullable when the probe doesn't
+   *  produce a numeric series (e.g. Sasha has no source). */
+  trail?: readonly number[] | null;
 };
 
 export type IncidentSeverity = "info" | "warning" | "critical";

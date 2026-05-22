@@ -20,6 +20,7 @@ from app.routes import (
     chat,
     connections,
     conversations,
+    decisions,
     insights,
     llm,
     media,
@@ -94,3 +95,4 @@ app.include_router(media.presentations_router, prefix="/api/presentations")
 app.include_router(admin.router, prefix="/api/admin")
 app.include_router(situation_room.router, prefix="/api/situation-room")
 app.include_router(sme.router, prefix="/api/sme")
+app.include_router(decisions.router, prefix="/api/decisions")

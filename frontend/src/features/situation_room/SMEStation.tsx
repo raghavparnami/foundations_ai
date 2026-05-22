@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { SMEIcon } from "./icons";
 import KnowledgePanel from "./KnowledgePanel";
+import Sparkline from "./Sparkline";
 import type { SMEPersona, SMEStation, SMEStatus } from "./types";
 
 const STATUS_DOT: Record<SMEStatus, string> = {
@@ -28,6 +29,13 @@ type Props = {
    *  Standing Meeting seeded with this SME's current finding. */
   onConvene?: (persona: SMEPersona, station: SMEStation) => void;
 };
+
+function formatTrail(v: number): string {
+  if (v === 0) return "0";
+  if (v < 1) return v.toFixed(2);
+  if (v < 10) return v.toFixed(1);
+  return Math.round(v).toString();
+}
 
 export default function SMEStation({ persona, station, onConvene }: Props) {
   const alerting = station.status === "alerting";
@@ -109,9 +117,23 @@ export default function SMEStation({ persona, station, onConvene }: Props) {
           </span>
         </div>
 
-        <p className="mt-2 text-[12.5px] leading-snug text-[var(--text)]">
-          {station.current_finding}
-        </p>
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <p className="text-[12.5px] leading-snug text-[var(--text)] flex-1 min-w-0">
+            {station.current_finding}
+          </p>
+          {station.trail && station.trail.length > 0 && (
+            <span
+              title={`Last 7 days: ${station.trail.map((v) => formatTrail(v)).join(", ")}`}
+              className="shrink-0"
+            >
+              <Sparkline
+                values={station.trail}
+                stroke={persona.color.fg}
+                fill={persona.color.bg}
+              />
+            </span>
+          )}
+        </div>
 
         {/* Skills / domain chips + learned-count. Sits inside the
             card-click button so a click anywhere on the card still

@@ -153,6 +153,12 @@ export default function SituationRoom(_props: Props) {
       {meeting && (
         <StandingMeeting
           key={`${meeting.kind}-${meeting.question}`}
+          kind={meeting.kind}
+          pinnedId={
+            meeting.kind === "briefing"
+              ? snapshot.pinned_incident?.id ?? null
+              : null
+          }
           question={meeting.question}
           forcedPanel={
             meeting.kind === "briefing"

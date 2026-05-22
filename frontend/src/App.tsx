@@ -8,6 +8,7 @@ import Memory from "./routes/Memory";
 import Admin from "./routes/Admin";
 import Wiki from "./routes/Wiki";
 import WikiPage from "./routes/WikiPage";
+import Ledger from "./routes/Ledger";
 
 const router = createBrowserRouter([
   {
@@ -22,6 +23,7 @@ const router = createBrowserRouter([
       { path: "admin", Component: Admin },
       { path: "wiki", Component: Wiki },
       { path: "wiki/*", Component: WikiPage },
+      { path: "ledger", Component: Ledger },
     ],
   },
 ]);

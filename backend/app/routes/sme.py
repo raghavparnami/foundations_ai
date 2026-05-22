@@ -223,3 +223,92 @@ async def delete_knowledge(kid: int) -> None:
     async with get_conn() as conn:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM sme_knowledge WHERE id = %s", (kid,))
+
+
+# ─── Synthesis (disagreement detection) ──────────────────────────────────
+
+
+class SynthIn(BaseModel):
+    answers: list[dict] = Field(min_length=1, max_length=8)
+
+
+class Dissenter(BaseModel):
+    sme_id: str
+    reason: str
+
+
+class SynthOut(BaseModel):
+    consensus_summary: str
+    dissenters: list[Dissenter]
+
+
+_SYNTH_SYSTEM = (
+    "You compare 2-4 SME analyses on the same question and report whether "
+    "they agree or disagree. Be terse. Output ONLY a JSON object with two "
+    "keys: 'consensus_summary' (one sentence) and 'dissenters' (array of "
+    "{sme_id, reason} for any SME whose conclusion materially differs "
+    "from the majority — empty array if all agree). Material disagreement "
+    "means different root cause, different recommended action, or "
+    "incompatible severity. Stylistic differences don't count."
+)
+
+
+@router.post("/synthesize", response_model=SynthOut)
+async def synthesize(body: SynthIn) -> SynthOut:
+    # Build the user message
+    pieces = ["SME ANSWERS:"]
+    for a in body.answers:
+        sid = str(a.get("sme_id", "?"))
+        txt = str(a.get("text", "")).strip()
+        pieces.append(f"\n### {sid}\n{txt}")
+    pieces.append(
+        '\n\nReturn ONLY JSON: {"consensus_summary": "...", '
+        '"dissenters": [{"sme_id": "...", "reason": "..."}]}'
+    )
+    user_msg = "\n".join(pieces)
+    client = async_client()
+    try:
+        resp = await client.chat.completions.create(
+            model=chat_model_id(),
+            messages=[
+                {"role": "system", "content": _SYNTH_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.0,
+            max_tokens=300,
+            response_format={"type": "json_object"},
+        )
+    except Exception:
+        # Some providers reject response_format; retry without.
+        resp = await client.chat.completions.create(
+            model=chat_model_id(),
+            messages=[
+                {"role": "system", "content": _SYNTH_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.0,
+            max_tokens=300,
+        )
+    content = (resp.choices[0].message.content or "").strip() if resp.choices else ""
+    try:
+        # Extract the first JSON object substring — models occasionally wrap
+        # the JSON in markdown fences even when asked not to.
+        start = content.find("{")
+        end = content.rfind("}")
+        if start >= 0 and end > start:
+            content = content[start : end + 1]
+        parsed = json.loads(content)
+    except Exception as e:  # noqa: BLE001
+        log.warning("synthesize.parse_failed err=%s body=%s", e, content[:200])
+        return SynthOut(consensus_summary="(could not parse)", dissenters=[])
+    return SynthOut(
+        consensus_summary=str(parsed.get("consensus_summary", "")).strip()[:400],
+        dissenters=[
+            Dissenter(
+                sme_id=str(d.get("sme_id", "?"))[:64],
+                reason=str(d.get("reason", "")).strip()[:300],
+            )
+            for d in (parsed.get("dissenters") or [])
+            if isinstance(d, dict)
+        ],
+    )

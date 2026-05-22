@@ -55,6 +55,7 @@ class SMEStationOut(BaseModel):
     status_label: str
     current_finding: str
     last_updated: str
+    trail: list[float] | None = None  # 7 daily samples, oldest → newest
 
 
 class PinnedIncidentOut(BaseModel):
@@ -83,6 +84,7 @@ class Finding:
     label: str         # "Now watching" / "Alerting" / "Recommending" / "Idle"
     text: str          # one-line finding
     severity: int      # 0 (idle) .. 5 (critical) — used to pick the pinned card
+    trail: list[float] | None = None  # 7 daily samples for sparkline
 
 
 Probe = Callable[[psycopg.AsyncConnection], Awaitable[Finding]]
@@ -94,14 +96,48 @@ async def _q(conn: psycopg.AsyncConnection, sql: str) -> list[dict[str, Any]]:
         return await cur.fetchall()
 
 
+async def _trail(
+    conn: psycopg.AsyncConnection, sql: str, days: int = 7
+) -> list[float]:
+    """Run a query that returns rows of (day, value) for the last N days,
+    fill missing days with 0, return oldest→newest values."""
+    rows = await _q(conn, sql)
+    by_day: dict[str, float] = {}
+    for r in rows:
+        d = r.get("day")
+        v = r.get("value")
+        if d is None or v is None:
+            continue
+        # Postgres date → ISO string for keying
+        key = d.isoformat() if hasattr(d, "isoformat") else str(d)
+        try:
+            by_day[key] = float(v)
+        except (TypeError, ValueError):
+            continue
+    today = datetime.now(timezone.utc).date()
+    out: list[float] = []
+    for i in range(days - 1, -1, -1):
+        d = today.fromordinal(today.toordinal() - i)
+        out.append(by_day.get(d.isoformat(), 0.0))
+    return out
+
+
 async def _probe_marcus(conn: psycopg.AsyncConnection) -> Finding:
     rows = await _q(
         conn,
         "SELECT line_id, deviation_rate FROM loom_views.v_deviation_rate_by_line_30d "
         "ORDER BY deviation_rate DESC NULLS LAST LIMIT 1",
     )
+    # Trail: daily total deviation count, 7 days
+    trail = await _trail(
+        conn,
+        "SELECT date_trunc('day', observed_at)::date AS day, COUNT(*) AS value "
+        "  FROM public.deviations "
+        " WHERE observed_at >= NOW() - INTERVAL '7 days' "
+        " GROUP BY 1",
+    )
     if not rows:
-        return Finding("idle", "Idle", "No production-run data available", 0)
+        return Finding("idle", "Idle", "No production-run data available", 0, trail)
     r = rows[0]
     rate_raw = r.get("deviation_rate")
     rate = float(rate_raw) if rate_raw is not None else 0.0
@@ -113,12 +149,14 @@ async def _probe_marcus(conn: psycopg.AsyncConnection) -> Finding:
             "Alerting",
             f"OEE drift · {line} at {pct:.1f}% deviation in last 30d",
             4,
+            trail,
         )
     return Finding(
         "watching",
         "Now watching",
         f"OEE drift across lines · {line} highest at {pct:.1f}%",
         2,
+        trail,
     )
 
 
@@ -130,12 +168,23 @@ async def _probe_iris(conn: psycopg.AsyncConnection) -> Finding:
         "  AND severity IN ('critical','high') "
         "GROUP BY category ORDER BY n DESC LIMIT 1",
     )
+    # Trail: daily critical+high sensor (temperature/pressure/vibration) count
+    trail = await _trail(
+        conn,
+        "SELECT date_trunc('day', observed_at)::date AS day, COUNT(*) AS value "
+        "  FROM public.deviations "
+        " WHERE observed_at >= NOW() - INTERVAL '7 days' "
+        "   AND severity IN ('critical','high') "
+        "   AND category IN ('temperature','pressure','vibration') "
+        " GROUP BY 1",
+    )
     if not rows:
         return Finding(
             "watching",
             "Now watching",
             "No critical sensor events in last 24h",
             1,
+            trail,
         )
     cat = (rows[0].get("category") or "anomaly").strip()
     n = int(rows[0].get("n") or 0)
@@ -145,12 +194,14 @@ async def _probe_iris(conn: psycopg.AsyncConnection) -> Finding:
             "Alerting",
             f"{cat.capitalize()} anomaly · {n} critical events in last 24h",
             5,
+            trail,
         )
     return Finding(
         "watching",
         "Now watching",
         f"{cat.capitalize()} · {n} elevated events in last 24h",
         2,
+        trail,
     )
 
 
@@ -167,12 +218,23 @@ async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
         " HAVING COUNT(*) >= 10 "
         " ORDER BY fail_rate DESC NULLS LAST LIMIT 1",
     )
+    # Trail: daily out-of-spec fraction
+    trail = await _trail(
+        conn,
+        "SELECT date_trunc('day', checked_at)::date AS day, "
+        "       (COUNT(*) FILTER (WHERE in_spec = false))::float "
+        "       / NULLIF(COUNT(*), 0) AS value "
+        "  FROM public.quality_checks "
+        " WHERE checked_at >= NOW() - INTERVAL '7 days' "
+        " GROUP BY 1",
+    )
     if not rows:
         return Finding(
             "watching",
             "Now watching",
             "No quality checks in last 7d",
             1,
+            trail,
         )
     param = (rows[0].get("parameter") or "parameter").strip()
     rate = float(rows[0].get("fail_rate") or 0)
@@ -182,12 +244,14 @@ async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
             "Alerting",
             f"Quality drift on {param} · {rate*100:.1f}% failure in last 7d",
             4,
+            trail,
         )
     return Finding(
         "watching",
         "Now watching",
         f"{param} · {rate*100:.1f}% failure rate in last 7d",
         2,
+        trail,
     )
 
 
@@ -212,8 +276,16 @@ async def _probe_mason(conn: psycopg.AsyncConnection) -> Finding:
         " GROUP BY e.equipment_id, e.name "
         " ORDER BY n DESC LIMIT 1",
     )
+    # Trail: total daily deviations across all equipment
+    trail = await _trail(
+        conn,
+        "SELECT date_trunc('day', observed_at)::date AS day, COUNT(*) AS value "
+        "  FROM public.deviations "
+        " WHERE observed_at >= NOW() - INTERVAL '7 days' "
+        " GROUP BY 1",
+    )
     if not rows:
-        return Finding("idle", "Idle", "No equipment events in last 30d", 0)
+        return Finding("idle", "Idle", "No equipment events in last 30d", 0, trail)
     name = rows[0].get("equipment_name") or "?"
     n = int(rows[0].get("n") or 0)
     if n >= 20:
@@ -222,12 +294,14 @@ async def _probe_mason(conn: psycopg.AsyncConnection) -> Finding:
             "Recommending",
             f"Pull {name} for service · {n} deviations in 30d",
             4,
+            trail,
         )
     return Finding(
         "watching",
         "Now watching",
         f"{name} · {n} deviations in 30d",
         2,
+        trail,
     )
 
 
@@ -237,6 +311,15 @@ async def _probe_sage(conn: psycopg.AsyncConnection) -> Finding:
         "SELECT COUNT(*) AS n FROM public.deviations "
         " WHERE severity = 'critical' AND resolved_at IS NULL",
     )
+    # Trail: daily count of new critical deviations
+    trail = await _trail(
+        conn,
+        "SELECT date_trunc('day', observed_at)::date AS day, COUNT(*) AS value "
+        "  FROM public.deviations "
+        " WHERE observed_at >= NOW() - INTERVAL '7 days' "
+        "   AND severity = 'critical' "
+        " GROUP BY 1",
+    )
     n = int(rows[0]["n"]) if rows else 0
     if n > 0:
         return Finding(
@@ -244,12 +327,14 @@ async def _probe_sage(conn: psycopg.AsyncConnection) -> Finding:
             "Alerting",
             f"{n} unresolved critical deviations · audit required",
             5,
+            trail,
         )
     return Finding(
         "idle",
         "Idle",
         "All audit checkpoints green",
         0,
+        trail,
     )
 
 
@@ -334,6 +419,7 @@ async def _compute_snapshot() -> SnapshotResponse:
             status_label=f.label,
             current_finding=f.text,
             last_updated=now.isoformat(),
+            trail=f.trail,
         )
         for sid, f in findings.items()
     ]

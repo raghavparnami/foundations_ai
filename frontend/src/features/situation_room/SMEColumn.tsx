@@ -27,6 +27,11 @@ type Props = {
    *  no tool loop. */
   contextFinding?: string | null;
   disagreeing?: boolean;
+  /** Reason text shown when this column dissents from the panel majority. */
+  dissentReason?: string | null;
+  /** Notified when the column reaches a terminal state (done / error) so the
+   *  parent can run synthesis after all columns are settled. */
+  onComplete?: (smeId: string, finalText: string, ok: boolean) => void;
 };
 
 export default function SMEColumn({
@@ -34,6 +39,8 @@ export default function SMEColumn({
   question,
   contextFinding,
   disagreeing,
+  dissentReason,
+  onComplete,
 }: Props) {
   const [text, setText] = useState("");
   const [status, setStatus] = useState<Status>("thinking");
@@ -55,6 +62,7 @@ export default function SMEColumn({
     const prefix = buildPersonaPrefix(persona);
 
     (async () => {
+      let buffer = "";
       try {
         for await (const ev of streamDeliberate(
           {
@@ -66,19 +74,23 @@ export default function SMEColumn({
           ctrl.signal,
         )) {
           if (ev.type === "delta") {
+            buffer += ev.text;
             setStatus("answering");
-            setText((t) => t + ev.text);
+            setText(buffer);
           } else if (ev.type === "done") {
             setStatus("done");
+            onComplete?.(persona.id, buffer, true);
           } else if (ev.type === "error") {
             setStatus("error");
             setError(ev.message);
+            onComplete?.(persona.id, buffer, false);
           }
         }
       } catch (e) {
         if (!ctrl.signal.aborted) {
           setStatus("error");
           setError((e as Error).message);
+          onComplete?.(persona.id, buffer, false);
         }
       }
     })();
@@ -86,14 +98,16 @@ export default function SMEColumn({
     return () => ctrl.abort();
   }, [persona.id, persona.name, persona.role, persona.domain, question]);
 
-  const borderColor = disagreeing ? persona.color.fg : "var(--color-border-tertiary)";
+  const isDissenting = Boolean(disagreeing && dissentReason);
+  const borderColor = isDissenting ? persona.color.fg : "var(--color-border-tertiary)";
+  const borderWidth = isDissenting ? "1.5px" : "0.5px";
   const accent = persona.color.fg;
 
   return (
     <article
       aria-label={`${persona.name} deliberating`}
       className="rounded-md bg-[var(--color-background-primary)] p-4 flex flex-col"
-      style={{ border: `0.5px solid ${borderColor}`, height: 460 }}
+      style={{ border: `${borderWidth} solid ${borderColor}`, height: 460 }}
     >
       <header className="flex items-center gap-3">
         <span
@@ -118,6 +132,21 @@ export default function SMEColumn({
         </div>
         <StatusBadge status={status} accent={accent} />
       </header>
+
+      {isDissenting && (
+        <div
+          role="note"
+          className="mt-2 rounded text-[11px] leading-snug px-2 py-1.5"
+          style={{
+            background: persona.color.bg,
+            color: persona.color.fg,
+            border: `0.5px solid ${persona.color.fg}55`,
+          }}
+        >
+          <span className="font-medium uppercase tracking-wider text-[9.5px]">Dissenting · </span>
+          {dissentReason}
+        </div>
+      )}
 
       <div
         ref={bodyRef}
