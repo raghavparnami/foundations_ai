@@ -19,11 +19,17 @@ import PinnedIncident from "./PinnedIncident";
 import SMEStation from "./SMEStation";
 import CommandBar from "./CommandBar";
 import StandingMeeting from "./StandingMeeting";
-import type { PinnedIncident as Incident, SituationRoomSnapshot } from "./types";
+import type {
+  PinnedIncident as Incident,
+  SituationRoomSnapshot,
+  SMEPersona,
+  SMEStation as SMEStationType,
+} from "./types";
 
 type MeetingState =
   | { kind: "ad-hoc"; question: string }
-  | { kind: "briefing"; question: string; converging: string[]; contextLabel: string };
+  | { kind: "briefing"; question: string; converging: string[]; contextLabel: string }
+  | { kind: "sme"; question: string; smeId: string; contextLabel: string };
 
 const POLL_MS = 30_000;
 
@@ -50,6 +56,15 @@ export default function SituationRoom(_props: Props) {
       question: incident.headline,
       converging: incident.converging_sme_ids,
       contextLabel: `Briefing · ${incident.subtext}`,
+    });
+  }
+
+  function openSMEMeeting(persona: SMEPersona, station: SMEStationType): void {
+    setMeeting({
+      kind: "sme",
+      question: `${persona.name} (${persona.role}): tell me more about — ${station.current_finding}`,
+      smeId: persona.id,
+      contextLabel: `Brief from ${persona.name} · ${station.status_label.toLowerCase()}`,
     });
   }
 
@@ -122,6 +137,7 @@ export default function SituationRoom(_props: Props) {
                 key={s.sme_id}
                 persona={persona}
                 station={s}
+                onConvene={openSMEMeeting}
               />
             );
           })}
@@ -135,10 +151,14 @@ export default function SituationRoom(_props: Props) {
           key={`${meeting.kind}-${meeting.question}`}
           question={meeting.question}
           forcedPanel={
-            meeting.kind === "briefing" ? meeting.converging : undefined
+            meeting.kind === "briefing"
+              ? meeting.converging
+              : meeting.kind === "sme"
+                ? [meeting.smeId]
+                : undefined
           }
           contextLabel={
-            meeting.kind === "briefing" ? meeting.contextLabel : undefined
+            meeting.kind === "ad-hoc" ? undefined : meeting.contextLabel
           }
           onClose={() => setMeeting(null)}
         />

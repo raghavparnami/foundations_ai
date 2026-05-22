@@ -6,9 +6,7 @@
  * Clicking the card opens the Phase-2 stub (a small modal that says
  * "Standing Meeting view coming in Phase 2").
  */
-import { useState } from "react";
 import { SMEIcon } from "./icons";
-import { StubModal } from "./StubModal";
 import type { SMEPersona, SMEStation, SMEStatus } from "./types";
 
 const STATUS_DOT: Record<SMEStatus, string> = {
@@ -23,18 +21,19 @@ const ALERT_BORDER = "#F0997B";
 type Props = {
   persona: SMEPersona;
   station: SMEStation;
+  /** Called when the user clicks the card. Phase 2: opens a one-column
+   *  Standing Meeting seeded with this SME's current finding. */
+  onConvene?: (persona: SMEPersona, station: SMEStation) => void;
 };
 
-export default function SMEStation({ persona, station }: Props) {
-  const [open, setOpen] = useState(false);
+export default function SMEStation({ persona, station, onConvene }: Props) {
   const alerting = station.status === "alerting";
 
   return (
-    <>
-      <button
+    <button
         type="button"
-        onClick={() => setOpen(true)}
-        aria-label={`${persona.name}, ${persona.role}, ${station.status_label}. ${station.current_finding}`}
+        onClick={() => onConvene?.(persona, station)}
+        aria-label={`${persona.name}, ${persona.role}, ${station.status_label}. ${station.current_finding}. Click to convene.`}
         className="text-left rounded-md bg-[var(--color-background-primary)] p-4 transition hover:shadow-[0_2px_18px_rgba(20,21,42,0.06)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40"
         style={{
           border: alerting
@@ -88,13 +87,5 @@ export default function SMEStation({ persona, station }: Props) {
           {station.current_finding}
         </p>
       </button>
-
-      {open && (
-        <StubModal
-          title={`${persona.name} · ${persona.role}`}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
   );
 }
