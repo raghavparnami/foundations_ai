@@ -30,6 +30,15 @@ export default function SMEColumn({ persona, question, disagreeing }: Props) {
   const [status, setStatus] = useState<Status>("thinking");
   const [error, setError] = useState<string | null>(null);
   const ctrlRef = useRef<AbortController | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  // As new text arrives, keep the column body scrolled to the bottom so the
+  // user always sees the freshest sentence without scrolling manually.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [text]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -81,8 +90,8 @@ export default function SMEColumn({ persona, question, disagreeing }: Props) {
   return (
     <article
       aria-label={`${persona.name} deliberating`}
-      className="rounded-md bg-[var(--color-background-primary)] p-4 flex flex-col min-h-0"
-      style={{ border: `0.5px solid ${borderColor}` }}
+      className="rounded-md bg-[var(--color-background-primary)] p-4 flex flex-col"
+      style={{ border: `0.5px solid ${borderColor}`, height: 460 }}
     >
       <header className="flex items-center gap-3">
         <span
@@ -109,8 +118,8 @@ export default function SMEColumn({ persona, question, disagreeing }: Props) {
       </header>
 
       <div
-        className="mt-3 text-[12.5px] leading-relaxed text-[var(--text)] markdown-doc flex-1 overflow-y-auto"
-        style={{ maxHeight: 420 }}
+        ref={bodyRef}
+        className="mt-3 text-[12.5px] leading-relaxed text-[var(--text)] markdown-doc flex-1 min-h-0 overflow-y-auto pr-1"
       >
         {status === "thinking" && (
           <div className="text-[var(--text-faint)] italic flex items-center gap-2">
