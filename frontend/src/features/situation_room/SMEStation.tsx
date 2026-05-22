@@ -6,7 +6,10 @@
  * Clicking the card opens the Phase-2 stub (a small modal that says
  * "Standing Meeting view coming in Phase 2").
  */
+import { useEffect, useState } from "react";
+import { api, ApiError } from "../../lib/api";
 import { SMEIcon } from "./icons";
+import KnowledgePanel from "./KnowledgePanel";
 import type { SMEPersona, SMEStation, SMEStatus } from "./types";
 
 const STATUS_DOT: Record<SMEStatus, string> = {
@@ -28,9 +31,32 @@ type Props = {
 
 export default function SMEStation({ persona, station, onConvene }: Props) {
   const alerting = station.status === "alerting";
+  const [teachOpen, setTeachOpen] = useState(false);
+  const [knowledgeCount, setKnowledgeCount] = useState<number>(0);
+
+  // Fetch the count once on mount so we can show a badge. Cheap GET.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const list = await api.get<{ enabled: boolean }[]>(
+          `/api/sme/${persona.id}/knowledge`,
+        );
+        if (alive) setKnowledgeCount(list.filter((n) => n.enabled).length);
+      } catch (e) {
+        // 404 / unreachable backend → leave at 0
+        if (!(e instanceof ApiError) && !alive) return;
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [persona.id]);
 
   return (
-    <button
+    <>
+    <div className="relative">
+      <button
         type="button"
         onClick={() => onConvene?.(persona, station)}
         aria-label={`${persona.name}, ${persona.role}, ${station.status_label}. ${station.current_finding}. Click to convene.`}
@@ -87,5 +113,39 @@ export default function SMEStation({ persona, station, onConvene }: Props) {
           {station.current_finding}
         </p>
       </button>
+
+      {/* Teach button — sits absolute top-right of the card so the
+          underlying button still owns the rest of the card click area. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setTeachOpen(true);
+        }}
+        title={`Teach ${persona.name} (${knowledgeCount} notes)`}
+        aria-label={`Teach ${persona.name}, ${knowledgeCount} notes`}
+        className="absolute top-2 right-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10.5px] text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--bg-soft)] transition"
+      >
+        <svg
+          width="11" height="11" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" strokeWidth="1.7"
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden
+        >
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z" />
+        </svg>
+        <span className="font-medium">
+          Teach{knowledgeCount > 0 ? ` · ${knowledgeCount}` : ""}
+        </span>
+      </button>
+    </div>
+    {teachOpen && (
+      <KnowledgePanel
+        persona={persona}
+        onChange={setKnowledgeCount}
+        onClose={() => setTeachOpen(false)}
+      />
+    )}
+    </>
   );
 }

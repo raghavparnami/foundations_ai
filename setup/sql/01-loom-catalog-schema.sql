@@ -436,6 +436,49 @@ CREATE TABLE IF NOT EXISTS wiki_agent_state (
 INSERT INTO wiki_agent_state (kind) VALUES ('tables'), ('docs'), ('code')
   ON CONFLICT DO NOTHING;
 
+-- ─── SME knowledge (Phase 3 of the Situation Room) ──────────────────────
+-- User-authored notes/rules attached to a specific SME persona. Injected
+-- verbatim into that SME's deliberation prompt so the model carries
+-- domain-specific institutional knowledge into every meeting. Think
+-- "Claude memory, but per-persona". Stored unstructured (free text) plus
+-- an importance tier 1-5 that biases ordering when there are many notes.
+
+CREATE TABLE IF NOT EXISTS sme_knowledge (
+  id          SERIAL PRIMARY KEY,
+  sme_id      TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  importance  INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+  enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS sme_knowledge_sme_idx
+  ON sme_knowledge(sme_id, enabled, importance DESC);
+
+-- ─── Decisions ledger (Phase 3 of the Situation Room) ───────────────────
+-- Every Standing Meeting we open writes a row here. Each row collects the
+-- question, who was convened, what each SME said, and the outcome (open /
+-- accepted / closed). The ledger is the system of record for "what did
+-- ops decide this shift" — auditable, filterable, immutable past close.
+
+CREATE TABLE IF NOT EXISTS decisions (
+  id            SERIAL PRIMARY KEY,
+  slug          TEXT UNIQUE NOT NULL,        -- d-<short uuid>
+  kind          TEXT NOT NULL CHECK (kind IN ('ad-hoc','briefing','sme')),
+  question      TEXT NOT NULL,
+  panel         TEXT[] NOT NULL,              -- sme_id list, e.g. {iris,mason}
+  context_label TEXT,                         -- "Briefing · IRIS + Mason converging"
+  pinned_id     TEXT,                         -- incident.id if it was a briefing
+  outcome       TEXT NOT NULL DEFAULT 'open' CHECK (outcome IN ('open','accepted','closed','overridden')),
+  accepted_sme  TEXT,                         -- the SME whose finding the user accepted
+  override_note TEXT,                         -- if a human overrode the panel
+  receipts      JSONB,                        -- per-sme contribution captured at close
+  opened_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  closed_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS decisions_opened_idx ON decisions(opened_at DESC);
+CREATE INDEX IF NOT EXISTS decisions_outcome_idx ON decisions(outcome);
+
 -- ─── Audit log (system-wide) ─────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS audit_log (
