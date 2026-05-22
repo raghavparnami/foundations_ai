@@ -18,6 +18,16 @@
   --user-border: #c8cffd;
   --gradient-hero: linear-gradient(120deg, #5b6cff 0%, #8a4dff 60%, #d36cff 100%);
   --gradient-orb:  radial-gradient(circle at 30% 30%, #c8d0ff 0%, #b9a4ff 35%, #f4d4ff 65%, #ffffff 100%);
+
+  /* Situation Room (Phase 1) — semantic aliases over the legacy tokens.
+     The redesign spec uses --color-* names; we map them to the existing
+     palette so the rest of the app doesn't need to be renamed. */
+  --color-background-primary:   var(--bg-elev);
+  --color-background-secondary: var(--bg-soft);
+  --color-border-tertiary:      var(--border);
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+
   color-scheme: light;
 }
 

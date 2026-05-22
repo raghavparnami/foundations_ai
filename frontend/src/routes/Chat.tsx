@@ -8,6 +8,8 @@ import TodoPanel from "../components/TodoPanel";
 import ChartView, { type ChartSpec, type ChartType } from "../components/ChartView";
 import DownloadChip, { type DownloadKind } from "../components/DownloadChip";
 import { apiUrl } from "../lib/api";
+import { useFlag } from "../lib/flags";
+import SituationRoom from "../features/situation_room/SituationRoom";
 
 type TextPart = { type: "text"; text: string };
 type AssistantPart = TextPart | ToolPart;
@@ -263,7 +265,9 @@ export default function Chat() {
     }
   }
 
+  const situationRoomEnabled = useFlag("situation_room_enabled");
   const empty = turns.length === 0;
+  const showSituationRoom = situationRoomEnabled && empty;
   const lastAssistant = [...turns]
     .reverse()
     .find((t): t is Extract<Turn, { role: "assistant" }> => t.role === "assistant");
@@ -277,7 +281,11 @@ export default function Chat() {
       <div className="flex flex-1 min-h-0">
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
           {empty ? (
-            <EmptyHero onPick={(s) => void send(s)} />
+            showSituationRoom ? (
+              <SituationRoom onSubmit={(t) => void send(t)} />
+            ) : (
+              <EmptyHero onPick={(s) => void send(s)} />
+            )
           ) : (
             <div className="px-6 py-6 space-y-5 max-w-[820px] mx-auto w-full">
               {turns.map((t) =>
@@ -298,6 +306,7 @@ export default function Chat() {
         )}
       </div>
 
+      {!showSituationRoom && (
       <div className="px-6 pb-6 pt-2">
         <form
           onSubmit={(e) => {
@@ -404,6 +413,7 @@ export default function Chat() {
           </div>
         </form>
       </div>
+      )}
     </div>
   );
 }
