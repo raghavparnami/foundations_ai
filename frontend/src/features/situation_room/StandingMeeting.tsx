@@ -24,6 +24,7 @@ import {
 } from "./ledger";
 import { selectSMEs } from "./selectSMEs";
 import SMEColumn from "./SMEColumn";
+import { useAllPersonas } from "./useCustomPersonas";
 import type { SMEPersona, SMEStation } from "./types";
 
 type Props = {
@@ -55,15 +56,20 @@ export default function StandingMeeting({
   findings,
   onClose,
 }: Props) {
+  const { personas: allPersonas } = useAllPersonas();
+  const lookupPersona = (id: string) =>
+    allPersonas.find((p) => p.id === id) ?? getPersona(id);
+
   const initial = useMemo(() => {
     if (forcedPanel && forcedPanel.length > 0) {
       const resolved = forcedPanel
-        .map((id) => getPersona(id))
+        .map((id) => lookupPersona(id))
         .filter((p): p is SMEPersona => Boolean(p));
       if (resolved.length > 0) return resolved;
     }
-    return selectSMEs(question, SME_ROSTER);
-  }, [question, forcedPanel]);
+    return selectSMEs(question, allPersonas.length ? allPersonas : SME_ROSTER);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question, forcedPanel, allPersonas.length]);
   const [panel, setPanel] = useState<SMEPersona[]>(initial);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [synth, setSynth] = useState<SynthResponse | null>(null);
@@ -117,7 +123,8 @@ export default function StandingMeeting({
     })();
   }
 
-  const bench = SME_ROSTER.filter((p) => !panel.find((x) => x.id === p.id));
+  const benchSource = allPersonas.length ? allPersonas : SME_ROSTER;
+  const bench = benchSource.filter((p) => !panel.find((x) => x.id === p.id));
   const next = bench[0];
 
   function bringIn() {
@@ -199,17 +206,23 @@ export default function StandingMeeting({
       </header>
 
       <div className={`grid gap-3 ${gridCols}`}>
-        {panel.map((persona) => (
-          <SMEColumn
-            key={persona.id}
-            persona={persona}
-            question={question}
-            contextFinding={findings?.[persona.id]?.current_finding ?? null}
-            disagreeing={Boolean(dissentBySme[persona.id])}
-            dissentReason={dissentBySme[persona.id] ?? null}
-            onComplete={handleColumnComplete}
-          />
-        ))}
+        {panel.map((persona) => {
+          const f = findings?.[persona.id];
+          return (
+            <SMEColumn
+              key={persona.id}
+              persona={persona}
+              question={question}
+              contextFinding={f?.current_finding ?? null}
+              evidenceSql={f?.evidence_sql ?? null}
+              evidenceRow={f?.evidence_row ?? null}
+              disagreeing={Boolean(dissentBySme[persona.id])}
+              dissentReason={dissentBySme[persona.id] ?? null}
+              decisionSlug={decision?.slug ?? null}
+              onComplete={handleColumnComplete}
+            />
+          );
+        })}
       </div>
 
       <footer className="text-[11.5px] flex items-start justify-between gap-3 pt-1">
@@ -224,7 +237,7 @@ export default function StandingMeeting({
                   <span className="text-[var(--text-muted)]">
                     {synth.dissenters
                       .map((d) => {
-                        const p = getPersona(d.sme_id);
+                        const p = lookupPersona(d.sme_id);
                         return p ? p.name : d.sme_id;
                       })
                       .join(", ")}{" "}

@@ -21,6 +21,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
 )
 
+from .. import cost
 from ..llm import async_client, chat_model_id
 from .system_prompt import build_system_prompt
 from .tools import TOOLS, run_tool
@@ -104,16 +105,29 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
             if forced_plan
             else "auto"
         )
+        _prompt_chars = sum(len(str(m.get("content") or "")) for m in messages)
+        _model = chat_model_id()
         resp = await client.chat.completions.create(
-            model=chat_model_id(),
+            model=_model,
             messages=cast(list[ChatCompletionMessageParam], messages),
             tools=cast(list[ChatCompletionToolParam], TOOLS),
             tool_choice=tool_choice,
         )
         if not resp.choices:
+            cost.record("chat-agent-round", _prompt_chars, 0, _model)
             yield _sse_event("error", {"message": "Model returned no choices"})
             return
         msg = resp.choices[0].message
+        cost.record(
+            "chat-agent-round",
+            _prompt_chars,
+            len(msg.content or "") + sum(
+                len(tc.function.arguments or "")
+                for tc in (msg.tool_calls or [])
+                if isinstance(tc, ChatCompletionMessageFunctionToolCall)
+            ),
+            _model,
+        )
 
         # If the model is calling tools, execute and loop.
         if msg.tool_calls:
@@ -173,8 +187,13 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
         # gets token-by-token output. We've already paid the round-trip cost
         # but the stream gives the UX win on long answers.
         messages.append({"role": "assistant", "content": msg.content or ""})
+        _stream_prompt_chars = sum(
+            len(str(m.get("content") or "")) for m in messages[:-1]
+        )
+        _stream_model = chat_model_id()
+        _stream_completion_chars = 0
         stream = await client.chat.completions.create(
-            model=chat_model_id(),
+            model=_stream_model,
             messages=cast(list[ChatCompletionMessageParam], messages[:-1]),
             stream=True,
         )
@@ -184,12 +203,19 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
                 continue
             delta = chunk.choices[0].delta
             if delta and delta.content:
+                _stream_completion_chars += len(delta.content)
                 out = scrubber.feed(delta.content)
                 if out:
                     yield _sse_event("delta", {"text": out})
         tail = scrubber.flush()
         if tail:
             yield _sse_event("delta", {"text": tail})
+        cost.record(
+            "chat-agent-final",
+            _stream_prompt_chars,
+            _stream_completion_chars,
+            _stream_model,
+        )
         yield _sse_event("done", {})
         return
 
@@ -206,8 +232,13 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
         ),
     })
     try:
+        _fallback_prompt_chars = sum(
+            len(str(m.get("content") or "")) for m in messages
+        )
+        _fallback_model = chat_model_id()
+        _fallback_completion_chars = 0
         final_stream = await client.chat.completions.create(
-            model=chat_model_id(),
+            model=_fallback_model,
             messages=cast(list[ChatCompletionMessageParam], messages),
             stream=True,
         )
@@ -217,12 +248,19 @@ async def run_agent(history: list[dict[str, Any]]) -> AsyncIterator[str]:
                 continue
             delta = chunk.choices[0].delta
             if delta and delta.content:
+                _fallback_completion_chars += len(delta.content)
                 out = scrubber.feed(delta.content)
                 if out:
                     yield _sse_event("delta", {"text": out})
         tail = scrubber.flush()
         if tail:
             yield _sse_event("delta", {"text": tail})
+        cost.record(
+            "chat-agent-fallback",
+            _fallback_prompt_chars,
+            _fallback_completion_chars,
+            _fallback_model,
+        )
     except Exception as e:  # noqa: BLE001
         yield _sse_event(
             "error",

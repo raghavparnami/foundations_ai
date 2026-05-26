@@ -38,6 +38,7 @@ from fastapi.responses import StreamingResponse
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
+from app import cost
 from app.db import get_conn
 from app.llm import async_client, chat_model_id
 
@@ -115,11 +116,16 @@ async def deliberate(req: DeliberateRequest) -> StreamingResponse:
     notes = await _load_knowledge(req.sme_id)
     messages = _build_messages(req, notes)
 
+    prompt_chars = sum(len(m.get("content", "")) for m in messages)
+    completion_chars = 0
+    model = chat_model_id()
+
     async def gen() -> AsyncIterator[str]:
+        nonlocal completion_chars
         try:
             client = async_client()
             stream = await client.chat.completions.create(
-                model=chat_model_id(),
+                model=model,
                 messages=messages,
                 stream=True,
                 temperature=0.3,
@@ -130,6 +136,7 @@ async def deliberate(req: DeliberateRequest) -> StreamingResponse:
                     continue
                 delta = chunk.choices[0].delta
                 if delta and delta.content:
+                    completion_chars += len(delta.content)
                     yield _sse("delta", {"text": delta.content})
             yield _sse("done", {})
         except Exception as e:  # noqa: BLE001
@@ -138,6 +145,8 @@ async def deliberate(req: DeliberateRequest) -> StreamingResponse:
                 "error",
                 {"message": f"{type(e).__name__}: {e}"},
             )
+        finally:
+            cost.record("sme-deliberate", prompt_chars, completion_chars, model)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -225,6 +234,349 @@ async def delete_knowledge(kid: int) -> None:
             await cur.execute("DELETE FROM sme_knowledge WHERE id = %s", (kid,))
 
 
+# ─── User-created SME personas ───────────────────────────────────────────
+
+
+class PersonaIn(BaseModel):
+    id: str = Field(min_length=2, max_length=32, pattern=r"^[a-z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=40)
+    role: str = Field(min_length=1, max_length=60)
+    icon: str = Field(default="settings-cog")
+    color_bg: str = Field(default="#F1EFE8")
+    color_fg: str = Field(default="#5F5E5A")
+    domain: list[str] = Field(default_factory=list)
+
+
+class PersonaOut(BaseModel):
+    id: str
+    name: str
+    role: str
+    icon: str
+    color_bg: str
+    color_fg: str
+    domain: list[str]
+    enabled: bool
+    created_by: str
+    created_at: str
+
+
+def _persona_to_out(r: dict) -> PersonaOut:
+    return PersonaOut(
+        id=r["id"],
+        name=r["name"],
+        role=r["role"],
+        icon=r["icon"],
+        color_bg=r["color_bg"],
+        color_fg=r["color_fg"],
+        domain=list(r["domain"] or []),
+        enabled=r["enabled"],
+        created_by=r["created_by"],
+        created_at=r["created_at"].isoformat(),
+    )
+
+
+@router.get("/personas", response_model=list[PersonaOut])
+async def list_personas() -> list[PersonaOut]:
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                "SELECT * FROM sme_personas ORDER BY created_at ASC",
+            )
+            rows = await cur.fetchall()
+    return [_persona_to_out(r) for r in rows]
+
+
+@router.post("/personas", response_model=PersonaOut)
+async def add_persona(body: PersonaIn) -> PersonaOut:
+    domain = [d.strip().lower() for d in body.domain if d.strip()]
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                "INSERT INTO sme_personas (id, name, role, icon, color_bg, color_fg, domain) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (id) DO NOTHING "
+                "RETURNING *",
+                (body.id, body.name, body.role, body.icon, body.color_bg, body.color_fg, domain),
+            )
+            r = await cur.fetchone()
+    if r is None:
+        raise HTTPException(409, f"persona id '{body.id}' already exists")
+    return _persona_to_out(r)
+
+
+@router.delete("/personas/{pid}", status_code=204)
+async def delete_persona(pid: str) -> None:
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM sme_personas WHERE id = %s", (pid,))
+            await cur.execute("DELETE FROM sme_knowledge WHERE sme_id = %s", (pid,))
+
+
+# ─── Calibration · thumbs feedback + aggregate scores ────────────────────
+
+
+class FeedbackIn(BaseModel):
+    sme_id: str
+    decision_slug: str
+    rating: int = Field(ge=-1, le=1)
+    note: str | None = Field(default=None, max_length=300)
+
+
+class CalibrationOut(BaseModel):
+    sme_id: str
+    total: int
+    up: int
+    down: int
+    accuracy: float | None
+
+
+@router.post("/feedback", status_code=204)
+async def add_feedback(body: FeedbackIn) -> None:
+    if body.rating == 0:
+        raise HTTPException(400, "rating must be -1 or 1")
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO sme_feedback (sme_id, decision_slug, rating, note)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (sme_id, decision_slug)
+                  DO UPDATE SET rating = EXCLUDED.rating, note = EXCLUDED.note
+                """,
+                (body.sme_id, body.decision_slug, body.rating, body.note),
+            )
+
+
+@router.get("/calibration/{sid}", response_model=CalibrationOut)
+async def get_calibration(sid: str) -> CalibrationOut:
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT
+                  COUNT(*)::int                       AS total,
+                  COUNT(*) FILTER (WHERE rating = 1)::int  AS up,
+                  COUNT(*) FILTER (WHERE rating = -1)::int AS down
+                FROM sme_feedback
+                WHERE sme_id = %s
+                  AND created_at >= NOW() - INTERVAL '90 days'
+                """,
+                (sid,),
+            )
+            r = await cur.fetchone() or {"total": 0, "up": 0, "down": 0}
+    total = int(r["total"])
+    return CalibrationOut(
+        sme_id=sid,
+        total=total,
+        up=int(r["up"]),
+        down=int(r["down"]),
+        accuracy=round(int(r["up"]) / total, 3) if total > 0 else None,
+    )
+
+
+@router.get("/calibration", response_model=dict[str, CalibrationOut])
+async def get_all_calibration() -> dict[str, CalibrationOut]:
+    """All SMEs in one call — for the SR cards."""
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT
+                  sme_id,
+                  COUNT(*)::int                       AS total,
+                  COUNT(*) FILTER (WHERE rating = 1)::int  AS up,
+                  COUNT(*) FILTER (WHERE rating = -1)::int AS down
+                FROM sme_feedback
+                WHERE created_at >= NOW() - INTERVAL '90 days'
+                GROUP BY sme_id
+                """
+            )
+            rows = await cur.fetchall()
+    out: dict[str, CalibrationOut] = {}
+    for r in rows:
+        total = int(r["total"])
+        out[r["sme_id"]] = CalibrationOut(
+            sme_id=r["sme_id"],
+            total=total,
+            up=int(r["up"]),
+            down=int(r["down"]),
+            accuracy=round(int(r["up"]) / total, 3) if total > 0 else None,
+        )
+    return out
+
+
+# ─── Ledger replay distiller (closes the learning loop) ─────────────────
+
+
+class DistillIn(BaseModel):
+    sme_id: str
+    look_back_days: int = Field(default=14, ge=1, le=90)
+    dry_run: bool = False
+
+
+class DistillOut(BaseModel):
+    sme_id: str
+    sampled_decisions: int
+    notes_added: int
+    notes: list[str]
+
+
+_DISTILL_SYSTEM = (
+    "You read a stack of past Standing Meeting transcripts where this SME "
+    "was on the panel, and distill 3-5 SHORT institutional rules the SME "
+    "should carry into future meetings. Each rule MUST be a single line, "
+    "actionable, and grounded in the recurring patterns you see. Skip "
+    "anything that only showed up once. Output ONLY a JSON object: "
+    '{"notes": ["...", "..."]}'
+)
+
+
+@router.post("/distill", response_model=DistillOut)
+async def distill(body: DistillIn) -> DistillOut:
+    """Read recent decisions where this SME participated, ask the LLM to
+    summarise recurring patterns, and persist them as auto-generated
+    sme_knowledge rows (importance 3, enabled=TRUE).
+
+    Idempotent enough for daily replay — duplicate-text rows are skipped."""
+    # 1. Sample past decisions where this SME was on the panel
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                """
+                SELECT slug, question, panel, receipts, opened_at, closed_at,
+                       outcome, context_label
+                  FROM decisions
+                 WHERE %s = ANY(panel)
+                   AND opened_at >= NOW() - (%s || ' days')::interval
+                   AND receipts IS NOT NULL
+                 ORDER BY opened_at DESC
+                 LIMIT 30
+                """,
+                (body.sme_id, body.look_back_days),
+            )
+            rows = await cur.fetchall()
+
+    if len(rows) < 2:
+        return DistillOut(
+            sme_id=body.sme_id,
+            sampled_decisions=len(rows),
+            notes_added=0,
+            notes=[],
+        )
+
+    # 2. Build a corpus of this SME's contributions
+    parts: list[str] = []
+    for r in rows:
+        receipts = r.get("receipts") or {}
+        if isinstance(receipts, dict):
+            entry = receipts.get(body.sme_id)
+            if isinstance(entry, dict):
+                txt = str(entry.get("text", "")).strip()
+                if txt:
+                    parts.append(
+                        f"### {r['slug']} · {r['question']}\n"
+                        f"(outcome: {r['outcome']})\n"
+                        f"{txt[:800]}"
+                    )
+
+    if len(parts) < 2:
+        return DistillOut(
+            sme_id=body.sme_id,
+            sampled_decisions=len(rows),
+            notes_added=0,
+            notes=[],
+        )
+
+    corpus = "\n\n".join(parts[:15])
+    user_msg = (
+        f"SME id: {body.sme_id}\n"
+        f"Past meetings ({len(parts)}):\n\n{corpus}\n\n"
+        "Return JSON only."
+    )
+
+    # 3. Call the LLM
+    client = async_client()
+    try:
+        resp = await client.chat.completions.create(
+            model=chat_model_id(),
+            messages=[
+                {"role": "system", "content": _DISTILL_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.1,
+            max_tokens=300,
+            response_format={"type": "json_object"},
+        )
+    except Exception:
+        resp = await client.chat.completions.create(
+            model=chat_model_id(),
+            messages=[
+                {"role": "system", "content": _DISTILL_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.1,
+            max_tokens=300,
+        )
+    content = (resp.choices[0].message.content or "").strip() if resp.choices else ""
+    cost.record("sme-distill", len(_DISTILL_SYSTEM) + len(user_msg), len(content), chat_model_id())
+
+    try:
+        start = content.find("{")
+        end = content.rfind("}")
+        if start >= 0 and end > start:
+            content = content[start : end + 1]
+        parsed = json.loads(content)
+    except Exception:  # noqa: BLE001
+        log.warning("distill.parse_failed sme=%s body=%s", body.sme_id, content[:200])
+        return DistillOut(
+            sme_id=body.sme_id,
+            sampled_decisions=len(rows),
+            notes_added=0,
+            notes=[],
+        )
+
+    raw_notes = parsed.get("notes") or []
+    notes: list[str] = []
+    for n in raw_notes:
+        if isinstance(n, str):
+            t = n.strip()
+            if 5 <= len(t) <= 500:
+                notes.append(t)
+    notes = notes[:5]
+
+    if body.dry_run or not notes:
+        return DistillOut(
+            sme_id=body.sme_id,
+            sampled_decisions=len(rows),
+            notes_added=0,
+            notes=notes,
+        )
+
+    # 4. Persist as sme_knowledge rows — skip duplicates by exact text match
+    added = 0
+    async with get_conn() as conn:
+        async with conn.cursor() as cur:
+            for t in notes:
+                await cur.execute(
+                    "SELECT 1 FROM sme_knowledge WHERE sme_id = %s AND text = %s",
+                    (body.sme_id, t),
+                )
+                if await cur.fetchone():
+                    continue
+                await cur.execute(
+                    "INSERT INTO sme_knowledge (sme_id, text, importance) "
+                    "VALUES (%s, %s, 3)",
+                    (body.sme_id, t),
+                )
+                added += 1
+    return DistillOut(
+        sme_id=body.sme_id,
+        sampled_decisions=len(rows),
+        notes_added=added,
+        notes=notes,
+    )
+
+
 # ─── Synthesis (disagreement detection) ──────────────────────────────────
 
 
@@ -290,6 +642,12 @@ async def synthesize(body: SynthIn) -> SynthOut:
             max_tokens=300,
         )
     content = (resp.choices[0].message.content or "").strip() if resp.choices else ""
+    cost.record(
+        "sme-synthesize",
+        len(_SYNTH_SYSTEM) + len(user_msg),
+        len(content),
+        chat_model_id(),
+    )
     try:
         # Extract the first JSON object substring — models occasionally wrap
         # the JSON in markdown fences even when asked not to.

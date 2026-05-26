@@ -63,3 +63,23 @@ export async function synthesize(
 ): Promise<SynthResponse> {
   return api.post<SynthResponse>("/api/sme/synthesize", { answers });
 }
+
+export type Calibration = {
+  sme_id: string;
+  total: number;
+  up: number;
+  down: number;
+  accuracy: number | null;
+};
+
+export async function sendFeedback(
+  sme_id: string,
+  decision_slug: string,
+  rating: 1 | -1,
+): Promise<void> {
+  await api.post("/api/sme/feedback", { sme_id, decision_slug, rating });
+}
+
+export async function getAllCalibration(): Promise<Record<string, Calibration>> {
+  return api.get<Record<string, Calibration>>("/api/sme/calibration");
+}

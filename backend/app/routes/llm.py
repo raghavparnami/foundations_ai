@@ -7,14 +7,31 @@ POST /api/llm/test     — one-shot 1-token completion to confirm the provider
                          OPENROUTER_API_KEY / DATABRICKS_HOST+TOKEN before the
                          full agent boots and burns tokens chasing a 401.
 """
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app import cost
 from app.llm import async_client, chat_model_id, provider_label
 
 router = APIRouter()
+
+
+@router.get("/cost-meter")
+async def cost_meter() -> dict[str, Any]:
+    """Running totals since this process started — resets on restart.
+
+    Tokens are estimated (~4 chars / token) for streaming completions
+    that don't return a usage object; exact for non-streaming.
+    """
+    return cost.snapshot()
+
+
+@router.post("/cost-meter/reset")
+async def cost_meter_reset() -> dict[str, str]:
+    cost.reset()
+    return {"status": "reset"}
 
 
 class LLMInfo(BaseModel):

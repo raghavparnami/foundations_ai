@@ -114,6 +114,32 @@ export default function KnowledgePanel({ persona, onClose, onChange }: Props) {
     }
   }
 
+  const [distilling, setDistilling] = useState(false);
+  async function distill() {
+    setDistilling(true);
+    setError(null);
+    try {
+      const r = await api.post<{
+        sme_id: string;
+        sampled_decisions: number;
+        notes_added: number;
+        notes: string[];
+      }>("/api/sme/distill", { sme_id: persona.id, look_back_days: 14 });
+      if (r.notes_added === 0) {
+        setError(
+          r.sampled_decisions < 2
+            ? "Not enough past meetings yet — convene a few more first."
+            : "Nothing new to distill — recent meetings didn't form a pattern.",
+        );
+      }
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDistilling(false);
+    }
+  }
+
   return (
     <div
       role="dialog"
@@ -151,13 +177,24 @@ export default function KnowledgePanel({ persona, onClose, onChange }: Props) {
               Your notes are injected into {persona.name}'s deliberation prompt next time a meeting opens.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[12px] font-medium px-3 py-1.5 rounded-full bg-[var(--bg-soft)] text-[var(--text-muted)] hover:text-[var(--text)] transition"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void distill()}
+              disabled={distilling}
+              title="Distill recurring patterns from the last 14 days of meetings into auto-generated notes"
+              className="text-[12px] font-medium px-3 py-1.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] hover:opacity-80 disabled:opacity-40 transition"
+            >
+              {distilling ? "Distilling…" : "Distill recent meetings"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[12px] font-medium px-3 py-1.5 rounded-full bg-[var(--bg-soft)] text-[var(--text-muted)] hover:text-[var(--text)] transition"
+            >
+              Close
+            </button>
+          </div>
         </header>
 
         {/* Add new */}

@@ -436,6 +436,42 @@ CREATE TABLE IF NOT EXISTS wiki_agent_state (
 INSERT INTO wiki_agent_state (kind) VALUES ('tables'), ('docs'), ('code')
   ON CONFLICT DO NOTHING;
 
+-- ─── SME personas (user-creatable, teach-only) ──────────────────────────
+-- The six built-in personas (Marcus, IRIS, etc.) live in
+-- frontend/src/features/situation_room/fixtures.ts. Rows in this table are
+-- ADDITIONAL personas the user creates from the UI. They have no auto-
+-- probe today — they start in 'watching' state and rely entirely on the
+-- Teach panel for institutional knowledge until a probe is bound to them.
+
+CREATE TABLE IF NOT EXISTS sme_personas (
+  id          TEXT PRIMARY KEY,                  -- lowercase slug
+  name        TEXT NOT NULL,
+  role        TEXT NOT NULL,
+  icon        TEXT NOT NULL DEFAULT 'settings-cog',
+  color_bg    TEXT NOT NULL DEFAULT '#F1EFE8',
+  color_fg    TEXT NOT NULL DEFAULT '#5F5E5A',
+  domain      TEXT[] NOT NULL DEFAULT '{}',
+  enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by  TEXT NOT NULL DEFAULT 'user',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ─── SME calibration (Phase 3) ──────────────────────────────────────────
+-- Per-meeting thumbs from the user. We aggregate over a rolling window to
+-- show "<SME> · 84% useful over 47 cases" on the card hover and the
+-- meeting footer. One row per (sme, decision) pair so duplicates upsert.
+
+CREATE TABLE IF NOT EXISTS sme_feedback (
+  id            SERIAL PRIMARY KEY,
+  sme_id        TEXT NOT NULL,
+  decision_slug TEXT NOT NULL,
+  rating        SMALLINT NOT NULL CHECK (rating IN (-1, 1)),
+  note          TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (sme_id, decision_slug)
+);
+CREATE INDEX IF NOT EXISTS sme_feedback_sme_idx ON sme_feedback(sme_id, created_at DESC);
+
 -- ─── SME knowledge (Phase 3 of the Situation Room) ──────────────────────
 -- User-authored notes/rules attached to a specific SME persona. Injected
 -- verbatim into that SME's deliberation prompt so the model carries

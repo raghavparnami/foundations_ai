@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamDeliberate } from "./streamDeliberate";
+import { sendFeedback } from "./ledger";
 import { SMEIcon } from "./icons";
 import type { SMEPersona } from "./types";
 
@@ -26,22 +27,42 @@ type Props = {
    *  the model doesn't need to walk the catalog itself — single LLM call,
    *  no tool loop. */
   contextFinding?: string | null;
+  /** The SQL probe behind contextFinding — shown as a clickable receipt. */
+  evidenceSql?: string | null;
+  evidenceRow?: Record<string, unknown> | null;
   disagreeing?: boolean;
   /** Reason text shown when this column dissents from the panel majority. */
   dissentReason?: string | null;
   /** Notified when the column reaches a terminal state (done / error) so the
    *  parent can run synthesis after all columns are settled. */
   onComplete?: (smeId: string, finalText: string, ok: boolean) => void;
+  /** Decision slug for this meeting · enables thumbs feedback once present. */
+  decisionSlug?: string | null;
 };
 
 export default function SMEColumn({
   persona,
   question,
   contextFinding,
+  evidenceSql,
+  evidenceRow,
   disagreeing,
   dissentReason,
   onComplete,
+  decisionSlug,
 }: Props) {
+  const [showEvidence, setShowEvidence] = useState(false);
+  const [rating, setRating] = useState<1 | -1 | 0>(0);
+
+  async function submitRating(r: 1 | -1) {
+    if (!decisionSlug) return;
+    setRating(r);
+    try {
+      await sendFeedback(persona.id, decisionSlug, r);
+    } catch {
+      // best-effort
+    }
+  }
   const [text, setText] = useState("");
   const [status, setStatus] = useState<Status>("thinking");
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +128,7 @@ export default function SMEColumn({
     <article
       aria-label={`${persona.name} deliberating`}
       className="rounded-md bg-[var(--color-background-primary)] p-4 flex flex-col"
-      style={{ border: `${borderWidth} solid ${borderColor}`, height: 460 }}
+      style={{ border: `${borderWidth} solid ${borderColor}`, height: 540 }}
     >
       <header className="flex items-center gap-3">
         <span
@@ -174,6 +195,83 @@ export default function SMEColumn({
           </ReactMarkdown>
         )}
       </div>
+
+      {status === "done" && decisionSlug && (
+        <div className="mt-2 shrink-0 flex items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider font-medium text-[var(--text-faint)] mr-1">
+            Useful?
+          </span>
+          <button
+            type="button"
+            onClick={() => void submitRating(1)}
+            aria-pressed={rating === 1}
+            aria-label="Mark this answer useful"
+            className="w-6 h-6 inline-flex items-center justify-center rounded-md transition"
+            style={{
+              background: rating === 1 ? "#E1F5EE" : "var(--bg-soft)",
+              color: rating === 1 ? "#0F6E56" : "var(--text-muted)",
+              border: "0.5px solid var(--color-border-tertiary)",
+            }}
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            onClick={() => void submitRating(-1)}
+            aria-pressed={rating === -1}
+            aria-label="Mark this answer not useful"
+            className="w-6 h-6 inline-flex items-center justify-center rounded-md transition"
+            style={{
+              background: rating === -1 ? "#FBE5E1" : "var(--bg-soft)",
+              color: rating === -1 ? "#B33A21" : "var(--text-muted)",
+              border: "0.5px solid var(--color-border-tertiary)",
+            }}
+          >
+            👎
+          </button>
+          {rating !== 0 && (
+            <span className="text-[10.5px] text-[var(--text-faint)] ml-1">
+              recorded
+            </span>
+          )}
+        </div>
+      )}
+
+      {evidenceSql && (
+        <div className="mt-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowEvidence((v) => !v)}
+            className="text-[10.5px] uppercase tracking-wider font-medium text-[var(--text-faint)] hover:text-[var(--text)] transition flex items-center gap-1"
+          >
+            <span aria-hidden>{showEvidence ? "▾" : "▸"}</span>
+            Evidence
+          </button>
+          {showEvidence && (
+            <div
+              className="mt-1.5 rounded text-[11px] font-mono p-2 overflow-x-auto"
+              style={{
+                background: "var(--bg-soft)",
+                border: "0.5px solid var(--color-border-tertiary)",
+                color: "var(--text-muted)",
+                maxHeight: 140,
+              }}
+            >
+              <div className="whitespace-pre-wrap break-words">
+                {evidenceSql}
+              </div>
+              {evidenceRow && (
+                <div
+                  className="mt-1.5 pt-1.5 text-[var(--text)]"
+                  style={{ borderTop: "0.5px solid var(--color-border-tertiary)" }}
+                >
+                  → {JSON.stringify(evidenceRow)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </article>
   );
 }

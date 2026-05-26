@@ -44,6 +44,10 @@ export type SMEStation = {
   /** 7 daily samples (oldest → newest), nullable when the probe doesn't
    *  produce a numeric series (e.g. Sasha has no source). */
   trail?: readonly number[] | null;
+  /** The exact SQL probe behind `current_finding` (clickable receipt). */
+  evidence_sql?: string | null;
+  /** Top row returned by the probe — JSON-safe. */
+  evidence_row?: Record<string, unknown> | null;
 };
 
 export type IncidentSeverity = "info" | "warning" | "critical";

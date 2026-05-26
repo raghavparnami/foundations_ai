@@ -57,7 +57,7 @@ export default function CommandBar({ onSubmit }: Props) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         autoComplete="off"
-        placeholder="Ask any SME, or @convene a meeting…"
+        placeholder="Ask the panel, or @Marcus / @IRIS / @Quinn… to pick one"
         className="flex-1 bg-transparent text-[13px] text-[var(--text)] placeholder:text-[var(--text-faint)] outline-none"
       />
       <kbd

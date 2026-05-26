@@ -14,12 +14,16 @@
  *   4. Command bar    — pinned to bottom of the content area (not viewport)
  */
 import { useEffect, useMemo, useState } from "react";
-import { getPersona } from "./fixtures";
+import { SME_ROSTER, getPersona } from "./fixtures";
+import { useAllPersonas } from "./useCustomPersonas";
+import NewSMEModal from "./NewSMEModal";
 import PinnedIncident from "./PinnedIncident";
 import SMEStation from "./SMEStation";
 import CommandBar from "./CommandBar";
 import StandingMeeting from "./StandingMeeting";
 import { useSnapshot } from "./useSnapshot";
+import { useCostMeter, formatUsd } from "./useCostMeter";
+import { useCalibration } from "./useCalibration";
 import type {
   PinnedIncident as Incident,
   SMEPersona,
@@ -44,8 +48,16 @@ type Props = {
 
 export default function SituationRoom(_props: Props) {
   const { snapshot, source, lastError } = useSnapshot();
+  const { personas, refresh: refreshPersonas } = useAllPersonas();
+  const meter = useCostMeter();
+  const calibration = useCalibration();
   const [now, setNow] = useState<Date>(() => new Date());
   const [meeting, setMeeting] = useState<MeetingState | null>(null);
+  const [showNewSme, setShowNewSme] = useState(false);
+
+  function personaById(sid: string) {
+    return personas.find((p) => p.id === sid) ?? getPersona(sid);
+  }
 
   function openBriefing(incident: Incident): void {
     setMeeting({
@@ -54,6 +66,29 @@ export default function SituationRoom(_props: Props) {
       converging: incident.converging_sme_ids,
       contextLabel: `Briefing · ${incident.subtext}`,
     });
+  }
+
+  function handleCommand(raw: string): void {
+    // @-mention shortcut: '@Marcus what about LINE-B?' opens a one-SME
+    // meeting with Marcus, stripping the @-tag from the question text.
+    const m = raw.match(/^\s*@(\w+)\s+(.+)$/);
+    if (m) {
+      const name = m[1]!.toLowerCase();
+      const rest = m[2]!.trim();
+      const persona = SME_ROSTER.find(
+        (p) => p.id.toLowerCase() === name || p.name.toLowerCase() === name,
+      );
+      if (persona) {
+        setMeeting({
+          kind: "sme",
+          question: rest,
+          smeId: persona.id,
+          contextLabel: `Direct · ${persona.name} only`,
+        });
+        return;
+      }
+    }
+    setMeeting({ kind: "ad-hoc", question: raw });
   }
 
   function openSMEMeeting(persona: SMEPersona, station: SMEStationType): void {
@@ -109,6 +144,17 @@ export default function SituationRoom(_props: Props) {
             />
             {onDuty} SMEs on duty
           </span>
+          {meter && (
+            <>
+              <span aria-hidden>·</span>
+              <span
+                title={`${meter.total.calls} LLM calls · ${(meter.total.prompt_tokens + meter.total.completion_tokens).toLocaleString()} tokens since service start`}
+                className="text-[var(--text-muted)]"
+              >
+                {formatUsd(meter.total.cost_usd)} · {meter.total.calls} calls
+              </span>
+            </>
+          )}
         </span>
       </header>
 
@@ -134,17 +180,50 @@ export default function SituationRoom(_props: Props) {
           className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
         >
           {snapshot.stations.map((s) => {
-            const persona = getPersona(s.sme_id);
+            const persona = personaById(s.sme_id);
             if (!persona) return null;
             return (
               <SMEStation
                 key={s.sme_id}
                 persona={persona}
                 station={s}
+                calibration={calibration[s.sme_id] ?? null}
                 onConvene={openSMEMeeting}
               />
             );
           })}
+          {/* "+ Add SME" tile */}
+          <button
+            type="button"
+            onClick={() => setShowNewSme(true)}
+            aria-label="Add a new SME"
+            className="rounded-md flex flex-col items-center justify-center p-6 gap-2 transition hover:bg-[var(--bg-elev)]"
+            style={{
+              background: "var(--color-background-primary)",
+              border: "1px dashed var(--color-border-tertiary)",
+              minHeight: 180,
+              color: "var(--text-muted)",
+            }}
+          >
+            <span
+              aria-hidden
+              className="inline-flex items-center justify-center rounded-full"
+              style={{
+                width: 36,
+                height: 36,
+                background: "var(--bg-soft)",
+                color: "var(--text-faint)",
+                fontSize: 20,
+                fontWeight: 300,
+              }}
+            >
+              +
+            </span>
+            <span className="text-[12.5px] font-medium">Add a new SME</span>
+            <span className="text-[11px] text-[var(--text-faint)] text-center max-w-[180px]">
+              Teach-only · starts in 'watching', learns from your notes
+            </span>
+          </button>
         </div>
       </div>
 
@@ -179,13 +258,18 @@ export default function SituationRoom(_props: Props) {
 
       {/* 5. Command bar */}
       <div className="mt-1">
-        <CommandBar
-          onSubmit={(t) => setMeeting({ kind: "ad-hoc", question: t })}
-        />
+        <CommandBar onSubmit={handleCommand} />
         <p className="mt-2 text-[10.5px] text-[var(--text-faint)] text-center">
           Press <kbd className="px-1 py-0.5 rounded bg-[var(--bg-soft)] border border-[var(--border)] text-[10px]">⌘K</kbd> to focus the bar. Asking convenes a Standing Meeting.
         </p>
       </div>
+
+      {showNewSme && (
+        <NewSMEModal
+          onClose={() => setShowNewSme(false)}
+          onCreated={() => void refreshPersonas()}
+        />
+      )}
     </section>
   );
 }

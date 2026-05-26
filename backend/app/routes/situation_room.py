@@ -56,6 +56,8 @@ class SMEStationOut(BaseModel):
     current_finding: str
     last_updated: str
     trail: list[float] | None = None  # 7 daily samples, oldest → newest
+    evidence_sql: str | None = None  # the probe SQL behind current_finding
+    evidence_row: dict | None = None  # the top row returned by the probe
 
 
 class PinnedIncidentOut(BaseModel):
@@ -85,6 +87,8 @@ class Finding:
     text: str          # one-line finding
     severity: int      # 0 (idle) .. 5 (critical) — used to pick the pinned card
     trail: list[float] | None = None  # 7 daily samples for sparkline
+    evidence_sql: str | None = None    # primary probe SQL (receipts)
+    evidence_row: dict | None = None   # top row from the probe
 
 
 Probe = Callable[[psycopg.AsyncConnection], Awaitable[Finding]]
@@ -94,6 +98,22 @@ async def _q(conn: psycopg.AsyncConnection, sql: str) -> list[dict[str, Any]]:
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(sql)
         return await cur.fetchall()
+
+
+def _row_jsonable(r: dict[str, Any]) -> dict[str, Any]:
+    """psycopg returns Decimal / datetime / etc. — coerce to JSON-safe."""
+    from decimal import Decimal
+    out: dict[str, Any] = {}
+    for k, v in r.items():
+        if v is None or isinstance(v, (str, int, bool)):
+            out[k] = v
+        elif isinstance(v, float):
+            out[k] = round(v, 4)
+        elif isinstance(v, Decimal):
+            out[k] = round(float(v), 4)
+        else:
+            out[k] = str(v)
+    return out
 
 
 async def _trail(
@@ -123,11 +143,11 @@ async def _trail(
 
 
 async def _probe_marcus(conn: psycopg.AsyncConnection) -> Finding:
-    rows = await _q(
-        conn,
+    primary_sql = (
         "SELECT line_id, deviation_rate FROM loom_views.v_deviation_rate_by_line_30d "
-        "ORDER BY deviation_rate DESC NULLS LAST LIMIT 1",
+        "ORDER BY deviation_rate DESC NULLS LAST LIMIT 1"
     )
+    rows = await _q(conn, primary_sql)
     # Trail: daily total deviation count, 7 days
     trail = await _trail(
         conn,
@@ -137,7 +157,7 @@ async def _probe_marcus(conn: psycopg.AsyncConnection) -> Finding:
         " GROUP BY 1",
     )
     if not rows:
-        return Finding("idle", "Idle", "No production-run data available", 0, trail)
+        return Finding("idle", "Idle", "No production-run data available", 0, trail, primary_sql, None)
     r = rows[0]
     rate_raw = r.get("deviation_rate")
     rate = float(rate_raw) if rate_raw is not None else 0.0
@@ -150,6 +170,8 @@ async def _probe_marcus(conn: psycopg.AsyncConnection) -> Finding:
             f"OEE drift · {line} at {pct:.1f}% deviation in last 30d",
             4,
             trail,
+            primary_sql,
+            _row_jsonable(r),
         )
     return Finding(
         "watching",
@@ -157,17 +179,19 @@ async def _probe_marcus(conn: psycopg.AsyncConnection) -> Finding:
         f"OEE drift across lines · {line} highest at {pct:.1f}%",
         2,
         trail,
+        primary_sql,
+        _row_jsonable(r),
     )
 
 
 async def _probe_iris(conn: psycopg.AsyncConnection) -> Finding:
-    rows = await _q(
-        conn,
+    primary_sql = (
         "SELECT category, COUNT(*) AS n FROM public.deviations "
         "WHERE observed_at >= NOW() - INTERVAL '24 hours' "
         "  AND severity IN ('critical','high') "
-        "GROUP BY category ORDER BY n DESC LIMIT 1",
+        "GROUP BY category ORDER BY n DESC LIMIT 1"
     )
+    rows = await _q(conn, primary_sql)
     # Trail: daily critical+high sensor (temperature/pressure/vibration) count
     trail = await _trail(
         conn,
@@ -185,9 +209,12 @@ async def _probe_iris(conn: psycopg.AsyncConnection) -> Finding:
             "No critical sensor events in last 24h",
             1,
             trail,
+            primary_sql,
+            None,
         )
     cat = (rows[0].get("category") or "anomaly").strip()
     n = int(rows[0].get("n") or 0)
+    row_evidence = _row_jsonable(rows[0])
     if n >= 5:
         return Finding(
             "alerting",
@@ -195,6 +222,8 @@ async def _probe_iris(conn: psycopg.AsyncConnection) -> Finding:
             f"{cat.capitalize()} anomaly · {n} critical events in last 24h",
             5,
             trail,
+            primary_sql,
+            row_evidence,
         )
     return Finding(
         "watching",
@@ -202,12 +231,13 @@ async def _probe_iris(conn: psycopg.AsyncConnection) -> Finding:
         f"{cat.capitalize()} · {n} elevated events in last 24h",
         2,
         trail,
+        primary_sql,
+        row_evidence,
     )
 
 
 async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
-    rows = await _q(
-        conn,
+    primary_sql = (
         "SELECT parameter, "
         "       COUNT(*) FILTER (WHERE in_spec = false)::float "
         "       / NULLIF(COUNT(*), 0) AS fail_rate, "
@@ -216,8 +246,9 @@ async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
         " WHERE checked_at >= NOW() - INTERVAL '7 days' "
         " GROUP BY parameter "
         " HAVING COUNT(*) >= 10 "
-        " ORDER BY fail_rate DESC NULLS LAST LIMIT 1",
+        " ORDER BY fail_rate DESC NULLS LAST LIMIT 1"
     )
+    rows = await _q(conn, primary_sql)
     # Trail: daily out-of-spec fraction
     trail = await _trail(
         conn,
@@ -235,9 +266,12 @@ async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
             "No quality checks in last 7d",
             1,
             trail,
+            primary_sql,
+            None,
         )
     param = (rows[0].get("parameter") or "parameter").strip()
     rate = float(rows[0].get("fail_rate") or 0)
+    row_evidence = _row_jsonable(rows[0])
     if rate > 0.15:
         return Finding(
             "alerting",
@@ -245,6 +279,8 @@ async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
             f"Quality drift on {param} · {rate*100:.1f}% failure in last 7d",
             4,
             trail,
+            primary_sql,
+            row_evidence,
         )
     return Finding(
         "watching",
@@ -252,6 +288,8 @@ async def _probe_quinn(conn: psycopg.AsyncConnection) -> Finding:
         f"{param} · {rate*100:.1f}% failure rate in last 7d",
         2,
         trail,
+        primary_sql,
+        row_evidence,
     )
 
 
@@ -267,15 +305,15 @@ async def _probe_sasha(_conn: psycopg.AsyncConnection) -> Finding:
 
 
 async def _probe_mason(conn: psycopg.AsyncConnection) -> Finding:
-    rows = await _q(
-        conn,
+    primary_sql = (
         "SELECT e.equipment_id, e.name AS equipment_name, COUNT(*) AS n "
         "  FROM public.deviations d "
         "  JOIN public.equipment e ON e.equipment_id = d.equipment_id "
         " WHERE d.observed_at >= NOW() - INTERVAL '30 days' "
         " GROUP BY e.equipment_id, e.name "
-        " ORDER BY n DESC LIMIT 1",
+        " ORDER BY n DESC LIMIT 1"
     )
+    rows = await _q(conn, primary_sql)
     # Trail: total daily deviations across all equipment
     trail = await _trail(
         conn,
@@ -285,9 +323,10 @@ async def _probe_mason(conn: psycopg.AsyncConnection) -> Finding:
         " GROUP BY 1",
     )
     if not rows:
-        return Finding("idle", "Idle", "No equipment events in last 30d", 0, trail)
+        return Finding("idle", "Idle", "No equipment events in last 30d", 0, trail, primary_sql, None)
     name = rows[0].get("equipment_name") or "?"
     n = int(rows[0].get("n") or 0)
+    row_evidence = _row_jsonable(rows[0])
     if n >= 20:
         return Finding(
             "recommending",
@@ -295,6 +334,8 @@ async def _probe_mason(conn: psycopg.AsyncConnection) -> Finding:
             f"Pull {name} for service · {n} deviations in 30d",
             4,
             trail,
+            primary_sql,
+            row_evidence,
         )
     return Finding(
         "watching",
@@ -302,15 +343,17 @@ async def _probe_mason(conn: psycopg.AsyncConnection) -> Finding:
         f"{name} · {n} deviations in 30d",
         2,
         trail,
+        primary_sql,
+        row_evidence,
     )
 
 
 async def _probe_sage(conn: psycopg.AsyncConnection) -> Finding:
-    rows = await _q(
-        conn,
+    primary_sql = (
         "SELECT COUNT(*) AS n FROM public.deviations "
-        " WHERE severity = 'critical' AND resolved_at IS NULL",
+        " WHERE severity = 'critical' AND resolved_at IS NULL"
     )
+    rows = await _q(conn, primary_sql)
     # Trail: daily count of new critical deviations
     trail = await _trail(
         conn,
@@ -321,6 +364,7 @@ async def _probe_sage(conn: psycopg.AsyncConnection) -> Finding:
         " GROUP BY 1",
     )
     n = int(rows[0]["n"]) if rows else 0
+    row_evidence = _row_jsonable(rows[0]) if rows else None
     if n > 0:
         return Finding(
             "alerting",
@@ -328,6 +372,8 @@ async def _probe_sage(conn: psycopg.AsyncConnection) -> Finding:
             f"{n} unresolved critical deviations · audit required",
             5,
             trail,
+            primary_sql,
+            row_evidence,
         )
     return Finding(
         "idle",
@@ -335,6 +381,8 @@ async def _probe_sage(conn: psycopg.AsyncConnection) -> Finding:
         "All audit checkpoints green",
         0,
         trail,
+        primary_sql,
+        row_evidence,
     )
 
 
@@ -392,6 +440,24 @@ def _derive_pinned(
     )
 
 
+async def _user_persona_ids() -> list[str]:
+    """User-created personas (rows in sme_personas). They have no probe yet,
+    so we emit a 'watching · awaiting probe' finding so they appear on the
+    SR and can be taught."""
+    from app.db import get_conn  # local import to avoid cycle
+    try:
+        async with get_conn() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT id FROM sme_personas WHERE enabled = TRUE",
+                )
+                rows = await cur.fetchall()
+        return [r[0] for r in rows]
+    except Exception as e:  # noqa: BLE001
+        log.warning("situation_room.persona_list_failed err=%s", e)
+        return []
+
+
 async def _compute_snapshot() -> SnapshotResponse:
     settings = get_settings()
     findings: dict[str, Finding] = {}
@@ -411,6 +477,16 @@ async def _compute_snapshot() -> SnapshotResponse:
                     0,
                 )
 
+    # Append user-created personas (no probe — they sit in watching state
+    # until teach notes accumulate and/or a probe is bound).
+    for pid in await _user_persona_ids():
+        findings[pid] = Finding(
+            "watching",
+            "Now watching",
+            "Awaiting probe · teach me what to look for",
+            1,
+        )
+
     now = datetime.now(timezone.utc)
     stations = [
         SMEStationOut(
@@ -420,6 +496,8 @@ async def _compute_snapshot() -> SnapshotResponse:
             current_finding=f.text,
             last_updated=now.isoformat(),
             trail=f.trail,
+            evidence_sql=f.evidence_sql,
+            evidence_row=f.evidence_row,
         )
         for sid, f in findings.items()
     ]

@@ -25,6 +25,8 @@ const ALERT_BORDER = "#F0997B";
 type Props = {
   persona: SMEPersona;
   station: SMEStation;
+  /** Per-SME calibration · "84% over 47 cases" badge. */
+  calibration?: { total: number; up: number; down: number; accuracy: number | null } | null;
   /** Called when the user clicks the card. Phase 2: opens a one-column
    *  Standing Meeting seeded with this SME's current finding. */
   onConvene?: (persona: SMEPersona, station: SMEStation) => void;
@@ -37,7 +39,7 @@ function formatTrail(v: number): string {
   return Math.round(v).toString();
 }
 
-export default function SMEStation({ persona, station, onConvene }: Props) {
+export default function SMEStation({ persona, station, calibration, onConvene }: Props) {
   const alerting = station.status === "alerting";
   const [teachOpen, setTeachOpen] = useState(false);
   const [knowledgeCount, setKnowledgeCount] = useState<number>(0);
@@ -95,6 +97,15 @@ export default function SMEStation({ persona, station, onConvene }: Props) {
             <div className="text-[11.5px] text-[var(--text-muted)] leading-tight mt-0.5">
               {persona.role}
             </div>
+            {calibration && calibration.total >= 3 && calibration.accuracy !== null && (
+              <div
+                className="text-[10px] leading-tight mt-0.5"
+                title={`${calibration.up} useful · ${calibration.down} not over ${calibration.total} rated`}
+                style={{ color: persona.color.fg }}
+              >
+                {Math.round(calibration.accuracy * 100)}% useful · {calibration.total} cases
+              </div>
+            )}
           </div>
         </div>
 
