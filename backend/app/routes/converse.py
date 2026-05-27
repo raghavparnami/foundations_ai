@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from typing import Any, AsyncIterator
@@ -106,6 +107,35 @@ _ROUTER_SYSTEM = (
     "Output ONLY JSON: "
     '{"route": "smes" | "direct", "smes": ["marcus", "iris"], "reason": "short"}'
 )
+
+
+_MENTION_RE = re.compile(r"^\s*@(\w[\w-]*)\b\s*(.*)$", re.DOTALL)
+
+
+def _try_mention_route(
+    question: str, personas: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Short-circuit when the user starts their question with @<persona>.
+
+    Accepts both the slug ('@marcus') and the display name ('@Marcus').
+    Strips the mention prefix from the question we feed downstream — the
+    LLM sees a clean question."""
+    m = _MENTION_RE.match(question)
+    if not m:
+        return None
+    handle = m.group(1).lower()
+    rest = m.group(2).strip()
+    if not rest:
+        return None
+    for p in personas:
+        if p["id"].lower() == handle or p["name"].lower() == handle:
+            return {
+                "route": "smes",
+                "smes": [p["id"]],
+                "reason": f"direct mention of {p['name']}",
+                "stripped_question": rest,
+            }
+    return None
 
 
 async def _route(question: str, personas: list[dict[str, Any]]) -> dict[str, Any]:
@@ -468,9 +498,16 @@ async def converse(req: ConverseRequest) -> StreamingResponse:
 
         yield _sse("user_message", {"msg_id": msg_id, "text": question})
 
-        # 1. Route
+        # 1. Route — @-mention takes priority, otherwise ask the LLM router.
         personas = await _all_personas()
-        decision = await _route(question, personas)
+        mention = _try_mention_route(question, personas)
+        if mention is not None:
+            decision = mention
+            # Pass the stripped question to downstream so the SME doesn't
+            # see "@Marcus" in its prompt.
+            question = decision["stripped_question"]
+        else:
+            decision = await _route(question, personas)
         log.info("converse.route msg=%s route=%s smes=%s", msg_id, decision["route"], decision["smes"])
 
         if decision["route"] == "direct":

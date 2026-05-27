@@ -10,6 +10,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { streamConverse } from "../features/converse/stream";
 import Transcript from "../features/converse/Transcript";
 import ComposerBar from "../features/converse/ComposerBar";
+import SMERail from "../features/converse/SMERail";
 import type {
   ConverseEvent,
   TranscriptItem,
@@ -35,6 +36,30 @@ export default function Converse() {
   const abortRef = useRef<AbortController | null>(null);
 
   const empty = items.length === 0;
+
+  // Derive who's speaking / participated for the SME rail.
+  const { speaking, participated } = useMemo(() => {
+    const speak = new Set<string>();
+    const part = new Set<string>();
+    // Find the most recent user message to bound "this turn".
+    let lastUserIdx = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it && it.kind === "speech" && it.speaker.kind === "user") {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    const startIdx = lastUserIdx >= 0 ? lastUserIdx : 0;
+    for (let i = startIdx; i < items.length; i++) {
+      const it = items[i];
+      if (!it || it.kind !== "speech") continue;
+      if (it.speaker.kind !== "sme") continue;
+      part.add(it.speaker.sme_id);
+      if (!it.done && busy) speak.add(it.speaker.sme_id);
+    }
+    return { speaking: speak, participated: part };
+  }, [items, busy]);
 
   const append = useCallback((item: TranscriptItem) => {
     setItems((prev) => [...prev, item]);
@@ -231,6 +256,7 @@ export default function Converse() {
   return (
     <main className="flex flex-col flex-1 min-h-0 bg-[var(--bg)]">
       <TopRail meter={meter} />
+      <SMERail speaking={speaking} participated={participated} />
       {empty ? (
         <Empty onPick={(s) => void send(s)} />
       ) : (
