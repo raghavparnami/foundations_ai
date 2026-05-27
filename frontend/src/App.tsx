@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 import Layout from "./routes/Layout";
 import Home from "./routes/Home";
 import Converse from "./routes/Converse";
+import Weave from "./routes/Weave";
 import Chat from "./routes/Chat";
 import Connections from "./routes/Connections";
 import Skills from "./routes/Skills";
@@ -17,9 +18,10 @@ const router = createBrowserRouter([
     path: "/",
     Component: Layout,
     children: [
-      // New home: transcript-style conversation with the orchestrator
-      // calling SMEs visibly (handshake events).
-      { index: true, Component: Converse },
+      // New home: The Weave · vertical persistent threads, geometry-as-story.
+      { index: true, Component: Weave },
+      // Previous transcript home, kept at /converse for fallback.
+      { path: "converse", Component: Converse },
       // Legacy SR + standing-meeting view, kept as a read-only roster.
       { path: "roster", Component: Home },
       // Legacy chat-thread route still accessible for power users.
