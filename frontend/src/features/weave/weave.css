@@ -190,41 +190,64 @@
 
 .weave-card {
   align-self: start;
-  padding: 8px 10px;
-  margin: 4px;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--text);
+  padding: 12px 14px 14px;
+  margin: 6px 8px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #14152a;            /* dark text always — bg is always a light pastel */
   position: relative;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   min-width: 0;
+  box-shadow: 0 1px 0 rgba(20, 21, 42, 0.04);
+}
+
+/* Force readable contrast for ALL markdown content inside cards,
+   regardless of theme. The card bg is a persona pastel which only
+   reads against dark text. */
+.weave-card,
+.weave-card .markdown-doc,
+.weave-card .markdown-doc p,
+.weave-card .markdown-doc li,
+.weave-card .markdown-doc strong,
+.weave-card .markdown-doc em,
+.weave-card .markdown-doc h1,
+.weave-card .markdown-doc h2,
+.weave-card .markdown-doc h3 {
+  color: #14152a;
+}
+.weave-card .markdown-doc code {
+  background: rgba(20, 21, 42, 0.08);
+  color: #14152a;
+}
+.weave-card .markdown-doc a {
+  color: var(--accent);
 }
 
 .weave-card__head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
-  font-size: 10.5px;
+  margin-bottom: 6px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .weave-card__head-tick {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
 }
 
 .weave-card__body {
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 
 .weave-card__body p {
-  margin: 0.35em 0;
+  margin: 0.4em 0;
 }
 
 .weave-card__pulse {

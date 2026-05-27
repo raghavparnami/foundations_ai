@@ -24,12 +24,19 @@ type Props = {
 export default function WeaveTurn({ items, threadIds, busy, isFirst }: Props) {
   const view = useMemo(() => buildView(items), [items]);
 
-  const cols = threadIds.length;
+  const speakerCount = view.smeContribs.length;
+  // When ≤3 SMEs speak, give each card real width (full / half / third).
+  // At 4+ we fall back to thread-aligned columns so the geometry still
+  // mirrors the warp ordering.
+  const useThreadAligned = speakerCount >= 4;
+  const cols = useThreadAligned
+    ? threadIds.length
+    : Math.max(1, speakerCount);
 
   return (
     <section
       className={"weave-turn " + (isFirst ? "weave-turn--first" : "")}
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
     >
       {view.question && (
         <div className="weave-turn__question">
@@ -37,16 +44,18 @@ export default function WeaveTurn({ items, threadIds, busy, isFirst }: Props) {
         </div>
       )}
 
-      {view.smeContribs.map((c) => {
-        const col = threadIds.indexOf(c.smeId);
-        if (col < 0) return null;
+      {view.smeContribs.map((c, idx) => {
+        const col = useThreadAligned
+          ? threadIds.indexOf(c.smeId) + 1
+          : idx + 1;
+        if (col < 1) return null;
         return (
           <WeaveCard
             key={c.smeId}
             smeId={c.smeId}
             text={c.text}
             streaming={!c.done && busy}
-            column={col + 1}
+            column={col}
           />
         );
       })}
