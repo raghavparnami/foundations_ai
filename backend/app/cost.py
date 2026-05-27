@@ -61,6 +61,7 @@ class _State:
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     by_kind: dict[str, Bucket] = field(default_factory=dict)
     by_model: dict[str, Bucket] = field(default_factory=dict)
+    by_sme: dict[str, Bucket] = field(default_factory=dict)
     total: Bucket = field(default_factory=Bucket)
 
 
@@ -73,16 +74,26 @@ def record(
     prompt_chars: int,
     completion_chars: int,
     model: str | None = None,
+    sme_id: str | None = None,
 ) -> None:
     """Record one LLM call. `kind` is a free-text bucket: 'chat-agent',
-    'sme-deliberate', 'sme-synthesize', 'doc-writer', 'wiki-agent', etc."""
+    'sme-deliberate', 'sme-synthesize', 'doc-writer', 'wiki-agent', etc.
+    `sme_id` (optional) attributes the call to a specific persona so we
+    can show per-SME spend on the cards."""
     m = (model or "unknown").strip()
     p_tok = _est_tokens(prompt_chars)
     c_tok = _est_tokens(completion_chars)
     in_per_m, out_per_m = _price(m)
     cost = (p_tok / 1_000_000) * in_per_m + (c_tok / 1_000_000) * out_per_m
     with _lock:
-        for b in (_state.total, _state.by_kind.setdefault(kind, Bucket()), _state.by_model.setdefault(m, Bucket())):
+        buckets = [
+            _state.total,
+            _state.by_kind.setdefault(kind, Bucket()),
+            _state.by_model.setdefault(m, Bucket()),
+        ]
+        if sme_id:
+            buckets.append(_state.by_sme.setdefault(sme_id, Bucket()))
+        for b in buckets:
             b.calls += 1
             b.prompt_tokens += p_tok
             b.completion_tokens += c_tok
@@ -114,6 +125,14 @@ def snapshot() -> dict:
                     "cost_usd": round(b.cost_usd, 4),
                 }
                 for m, b in _state.by_model.items()
+            },
+            "by_sme": {
+                s: {
+                    "calls": b.calls,
+                    "tokens": b.prompt_tokens + b.completion_tokens,
+                    "cost_usd": round(b.cost_usd, 4),
+                }
+                for s, b in _state.by_sme.items()
             },
         }
 

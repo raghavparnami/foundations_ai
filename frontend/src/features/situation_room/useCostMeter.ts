@@ -5,6 +5,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 
+export type CostBucket = { calls: number; tokens: number; cost_usd: number };
+
 export type CostMeter = {
   started_at: string;
   total: {
@@ -13,8 +15,9 @@ export type CostMeter = {
     completion_tokens: number;
     cost_usd: number;
   };
-  by_kind: Record<string, { calls: number; tokens: number; cost_usd: number }>;
-  by_model: Record<string, { calls: number; tokens: number; cost_usd: number }>;
+  by_kind: Record<string, CostBucket>;
+  by_model: Record<string, CostBucket>;
+  by_sme: Record<string, CostBucket>;
 };
 
 const POLL_MS = 20_000;

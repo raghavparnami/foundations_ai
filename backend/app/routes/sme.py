@@ -146,7 +146,13 @@ async def deliberate(req: DeliberateRequest) -> StreamingResponse:
                 {"message": f"{type(e).__name__}: {e}"},
             )
         finally:
-            cost.record("sme-deliberate", prompt_chars, completion_chars, model)
+            cost.record(
+                "sme-deliberate",
+                prompt_chars,
+                completion_chars,
+                model,
+                sme_id=req.sme_id,
+            )
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -302,6 +308,86 @@ async def add_persona(body: PersonaIn) -> PersonaOut:
     if r is None:
         raise HTTPException(409, f"persona id '{body.id}' already exists")
     return _persona_to_out(r)
+
+
+class ActivityItem(BaseModel):
+    kind: str   # "meeting" | "rated" | "taught" | "distilled"
+    ts: str
+    detail: str
+
+
+class ActivityResponse(BaseModel):
+    sme_id: str
+    items: list[ActivityItem]
+
+
+@router.get("/{sme_id}/activity", response_model=ActivityResponse)
+async def get_activity(sme_id: str) -> ActivityResponse:
+    """Recent events for this SME, used by the SR card to render an
+    'agent-like' activity feed. Derived from decisions / sme_feedback /
+    sme_knowledge — no separate audit table needed today."""
+    items: list[ActivityItem] = []
+    async with get_conn() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            # Meetings convened
+            await cur.execute(
+                """
+                SELECT slug, question, outcome, opened_at
+                  FROM decisions
+                 WHERE %s = ANY(panel)
+                 ORDER BY opened_at DESC LIMIT 10
+                """,
+                (sme_id,),
+            )
+            for r in await cur.fetchall():
+                items.append(
+                    ActivityItem(
+                        kind="meeting",
+                        ts=r["opened_at"].isoformat(),
+                        detail=f"{r['outcome']} · {(r['question'] or '').strip()[:80]}",
+                    )
+                )
+            # User feedback received
+            await cur.execute(
+                """
+                SELECT rating, created_at, decision_slug
+                  FROM sme_feedback
+                 WHERE sme_id = %s
+                 ORDER BY created_at DESC LIMIT 10
+                """,
+                (sme_id,),
+            )
+            for r in await cur.fetchall():
+                items.append(
+                    ActivityItem(
+                        kind="rated",
+                        ts=r["created_at"].isoformat(),
+                        detail=(
+                            "marked useful" if r["rating"] == 1 else "marked not useful"
+                        ),
+                    )
+                )
+            # Knowledge added
+            await cur.execute(
+                """
+                SELECT text, created_at
+                  FROM sme_knowledge
+                 WHERE sme_id = %s
+                 ORDER BY created_at DESC LIMIT 5
+                """,
+                (sme_id,),
+            )
+            for r in await cur.fetchall():
+                items.append(
+                    ActivityItem(
+                        kind="taught",
+                        ts=r["created_at"].isoformat(),
+                        detail=(r["text"] or "").strip()[:100],
+                    )
+                )
+
+    items.sort(key=lambda i: i.ts, reverse=True)
+    return ActivityResponse(sme_id=sme_id, items=items[:15])
 
 
 @router.delete("/personas/{pid}", status_code=204)
@@ -518,7 +604,13 @@ async def distill(body: DistillIn) -> DistillOut:
             max_tokens=300,
         )
     content = (resp.choices[0].message.content or "").strip() if resp.choices else ""
-    cost.record("sme-distill", len(_DISTILL_SYSTEM) + len(user_msg), len(content), chat_model_id())
+    cost.record(
+        "sme-distill",
+        len(_DISTILL_SYSTEM) + len(user_msg),
+        len(content),
+        chat_model_id(),
+        sme_id=body.sme_id,
+    )
 
     try:
         start = content.find("{")

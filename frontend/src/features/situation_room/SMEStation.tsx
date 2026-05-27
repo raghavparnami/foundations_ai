@@ -8,6 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../lib/api";
+import ActivityDrawer from "./ActivityDrawer";
 import { SMEIcon } from "./icons";
 import KnowledgePanel from "./KnowledgePanel";
 import Sparkline from "./Sparkline";
@@ -27,6 +28,8 @@ type Props = {
   station: SMEStation;
   /** Per-SME calibration · "84% over 47 cases" badge. */
   calibration?: { total: number; up: number; down: number; accuracy: number | null } | null;
+  /** Running LLM cost attributed to this SME (this shift). */
+  spend?: { calls: number; tokens: number; cost_usd: number } | null;
   /** Called when the user clicks the card. Phase 2: opens a one-column
    *  Standing Meeting seeded with this SME's current finding. */
   onConvene?: (persona: SMEPersona, station: SMEStation) => void;
@@ -39,10 +42,17 @@ function formatTrail(v: number): string {
   return Math.round(v).toString();
 }
 
-export default function SMEStation({ persona, station, calibration, onConvene }: Props) {
+function formatChipUsd(v: number): string {
+  if (v === 0) return "$0.00";
+  if (v < 0.01) return "<$0.01";
+  return `$${v.toFixed(2)}`;
+}
+
+export default function SMEStation({ persona, station, calibration, spend, onConvene }: Props) {
   const alerting = station.status === "alerting";
   const [teachOpen, setTeachOpen] = useState(false);
   const [knowledgeCount, setKnowledgeCount] = useState<number>(0);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   // Fetch the count once on mount so we can show a badge. Cheap GET.
   useEffect(() => {
@@ -104,6 +114,14 @@ export default function SMEStation({ persona, station, calibration, onConvene }:
                 style={{ color: persona.color.fg }}
               >
                 {Math.round(calibration.accuracy * 100)}% useful · {calibration.total} cases
+              </div>
+            )}
+            {spend && spend.calls > 0 && (
+              <div
+                className="text-[10px] leading-tight mt-0.5 text-[var(--text-faint)]"
+                title={`${spend.calls} LLM call${spend.calls === 1 ? "" : "s"} · ${spend.tokens.toLocaleString()} tokens this shift`}
+              >
+                {formatChipUsd(spend.cost_usd)} this shift · {spend.calls} call{spend.calls === 1 ? "" : "s"}
               </div>
             )}
           </div>
@@ -178,6 +196,27 @@ export default function SMEStation({ persona, station, calibration, onConvene }:
           )}
         </div>
       </button>
+
+      {/* Activity disclosure — small toggle below the card to expand the
+          recent-events feed. Floated as a separate non-button (the parent
+          <div className="relative"> already contains the click button) so
+          clicking it doesn't fire the convene. */}
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivityOpen((v) => !v);
+          }}
+          className="text-[10.5px] uppercase tracking-wider font-medium text-[var(--text-faint)] hover:text-[var(--text)] transition flex items-center gap-1"
+        >
+          <span aria-hidden>{activityOpen ? "▾" : "▸"}</span>
+          Activity
+        </button>
+        {activityOpen && (
+          <ActivityDrawer smeId={persona.id} accent={persona.color.fg} />
+        )}
+      </div>
 
       {/* Teach button — uniform 24×24 icon-only at the top-right. The
           underlying button owns the rest of the card click area; this

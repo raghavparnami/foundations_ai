@@ -188,6 +188,7 @@ export default function SituationRoom(_props: Props) {
                 persona={persona}
                 station={s}
                 calibration={calibration[s.sme_id] ?? null}
+                spend={meter?.by_sme?.[s.sme_id] ?? null}
                 onConvene={openSMEMeeting}
               />
             );
