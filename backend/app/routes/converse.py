@@ -239,6 +239,50 @@ class ConverseRequest(BaseModel):
     conversation_id: str | None = None
 
 
+class PreviewResponse(BaseModel):
+    route: str  # "smes" | "direct"
+    smes: list[str]
+    reason: str
+    estimated_cost_usd: float
+    estimated_seconds: float
+
+
+@router.post("/preview", response_model=PreviewResponse)
+async def preview(req: ConverseRequest) -> PreviewResponse:
+    """Cheap plan preview · runs the router only. ~1 small LLM call.
+    Used by the AskModal to show 'this will convene IRIS + Mason · ~$0.014'
+    before the user approves."""
+    personas = await _all_personas()
+    mention = _try_mention_route(req.question, personas)
+    if mention is not None:
+        decision = mention
+    else:
+        decision = await _route(req.question, personas)
+
+    # Rough cost / time estimate based on the chosen route.
+    if decision["route"] == "smes":
+        n = max(1, len(decision["smes"]))
+        # Each SME deliberate = ~1 LLM call (300 in/400 out tokens)
+        # Synthesize = ~1 small JSON call (200 in/200 out)
+        # Wrap-up = ~1 call (200 in/100 out)
+        approx_in = n * 700 + 400 + 200
+        approx_out = n * 400 + 200 + 100
+        # Use deepseek-v3.1 price as default
+        usd = (approx_in / 1_000_000) * 0.27 + (approx_out / 1_000_000) * 1.10
+        seconds = 4 + n * 3.5 + (3 if n >= 2 else 0)
+    else:
+        usd = (300 / 1_000_000) * 0.27 + (500 / 1_000_000) * 1.10
+        seconds = 5.0
+
+    return PreviewResponse(
+        route=decision["route"],
+        smes=decision["smes"],
+        reason=decision.get("reason", ""),
+        estimated_cost_usd=round(usd, 4),
+        estimated_seconds=round(seconds, 1),
+    )
+
+
 # ─── one-SME stream (writes events to a shared queue) ───────────────────
 
 

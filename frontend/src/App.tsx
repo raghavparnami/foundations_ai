@@ -3,6 +3,7 @@ import Layout from "./routes/Layout";
 import Home from "./routes/Home";
 import Converse from "./routes/Converse";
 import Weave from "./routes/Weave";
+import Console from "./routes/Console";
 import Chat from "./routes/Chat";
 import Connections from "./routes/Connections";
 import Skills from "./routes/Skills";
@@ -18,9 +19,11 @@ const router = createBrowserRouter([
     path: "/",
     Component: Layout,
     children: [
-      // New home: The Weave · vertical persistent threads, geometry-as-story.
-      { index: true, Component: Weave },
-      // Previous transcript home, kept at /converse for fallback.
+      // New home: Mission Control tile dashboard + Plan-Mode asking.
+      // No chat. No transcript. Tiles + a Plan modal + slide-out report.
+      { index: true, Component: Console },
+      // Previous attempts kept accessible as fallback URLs.
+      { path: "weave", Component: Weave },
       { path: "converse", Component: Converse },
       // Legacy SR + standing-meeting view, kept as a read-only roster.
       { path: "roster", Component: Home },
