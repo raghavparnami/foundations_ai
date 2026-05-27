@@ -1,0 +1,381 @@
+/* The Loom Terminal · Claude-Code-shaped UI for Loom.
+ *
+ * Monospace. Dark. Compact. Every action renders as a ⏺-prefixed tool
+ * block with ⎿-cornered output. The agent's plan is a checklist
+ * (☐ pending / ☒ in-progress / ✓ done). Slash commands. No bubbles.
+ *
+ * The look mirrors the Claude Code CLI without copying anything literal.
+ */
+
+.lt-root {
+  --lt-bg:        #0c0d12;
+  --lt-bg-elev:   #14151c;
+  --lt-bg-soft:   #1a1c25;
+  --lt-fg:        #e6e7ec;
+  --lt-fg-mute:   #9094a5;
+  --lt-fg-faint:  #5f6478;
+  --lt-rule:      #25272f;
+  --lt-accent:    #8a93ff;
+  --lt-accent-dim:#5a63c4;
+  --lt-ok:        #4ade80;
+  --lt-warn:      #fbbf24;
+  --lt-err:       #f87171;
+  --lt-mark:      #c084fc;
+  --lt-mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--lt-bg);
+  color: var(--lt-fg);
+  font-family: var(--lt-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  letter-spacing: 0;
+  overflow: hidden;
+}
+
+/* Top status line */
+
+.lt-topbar {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--lt-rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: var(--lt-bg-elev);
+  font-size: 11px;
+}
+
+.lt-topbar__brand {
+  color: var(--lt-fg);
+}
+
+.lt-topbar__brand b {
+  background: linear-gradient(135deg, #8a93ff, #c084fc 60%, #f0abfc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+}
+
+.lt-topbar__meta {
+  color: var(--lt-fg-faint);
+}
+
+.lt-topbar__path {
+  color: var(--lt-fg-mute);
+}
+
+.lt-topbar__cursor {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  background: var(--lt-accent);
+  margin-left: 4px;
+  animation: lt-blink 1.1s steps(1) infinite;
+  vertical-align: -2px;
+}
+
+@keyframes lt-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Stream */
+
+.lt-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 12px;
+  scroll-behavior: smooth;
+}
+
+.lt-stream__welcome {
+  color: var(--lt-fg-mute);
+  font-size: 11.5px;
+  margin-bottom: 14px;
+  white-space: pre-wrap;
+}
+
+.lt-stream__welcome b {
+  color: var(--lt-mark);
+  font-weight: 600;
+}
+
+/* User prompt echo */
+
+.lt-user {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 12px;
+  color: var(--lt-fg);
+}
+
+.lt-user__chev {
+  color: var(--lt-accent);
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.lt-user__text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+}
+
+/* Tool block (⏺ label · ⎿ output) */
+
+.lt-tool {
+  margin: 6px 0 8px;
+  font-family: var(--lt-mono);
+}
+
+.lt-tool__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--lt-fg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.lt-tool__dot {
+  font-size: 13px;
+  line-height: 1;
+  width: 11px;
+  display: inline-flex;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.lt-tool__dot--ok      { color: var(--lt-ok); }
+.lt-tool__dot--run     { color: var(--lt-accent); animation: lt-pulse 1.1s infinite; }
+.lt-tool__dot--err     { color: var(--lt-err); }
+.lt-tool__dot--idle    { color: var(--lt-fg-faint); }
+.lt-tool__dot--persona { /* color set inline per SME */ }
+
+@keyframes lt-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.lt-tool__label {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lt-tool__label-persona {
+  /* coloured by SME */
+  font-weight: 600;
+}
+
+.lt-tool__args {
+  color: var(--lt-fg-mute);
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.lt-tool__meta {
+  margin-left: auto;
+  color: var(--lt-fg-faint);
+  font-size: 11px;
+}
+
+.lt-tool__output {
+  margin: 4px 0 0 18px;
+  display: flex;
+  gap: 6px;
+}
+
+.lt-tool__corner {
+  color: var(--lt-fg-faint);
+  flex: 0 0 auto;
+  width: 12px;
+  font-size: 13px;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.lt-tool__body {
+  flex: 1;
+  color: var(--lt-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.lt-tool__body--mute {
+  color: var(--lt-fg-mute);
+}
+
+.lt-tool__body .markdown-doc,
+.lt-tool__body .markdown-doc p,
+.lt-tool__body .markdown-doc li,
+.lt-tool__body .markdown-doc strong {
+  color: var(--lt-fg);
+  font-family: var(--lt-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.lt-tool__body .markdown-doc p { margin: 0.3em 0; }
+
+.lt-tool__body .markdown-doc code {
+  background: var(--lt-bg-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--lt-accent);
+}
+
+/* Todo block */
+
+.lt-todo {
+  margin: 4px 0 0 18px;
+}
+
+.lt-todo__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.lt-todo__mark {
+  flex: 0 0 auto;
+  width: 14px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--lt-fg-mute);
+}
+
+.lt-todo__mark--ok      { color: var(--lt-ok); }
+.lt-todo__mark--run     { color: var(--lt-accent); animation: lt-pulse 1.1s infinite; }
+.lt-todo__mark--pending { color: var(--lt-fg-faint); }
+
+.lt-todo__text {
+  color: var(--lt-fg);
+}
+
+.lt-todo__text--ok    { color: var(--lt-fg-mute); text-decoration: line-through; text-decoration-color: var(--lt-fg-faint); }
+.lt-todo__text--run   { color: var(--lt-fg); font-weight: 500; }
+
+/* Meta line at end of turn */
+
+.lt-meta {
+  margin: 14px 0 18px;
+  color: var(--lt-fg-faint);
+  font-size: 11px;
+  border-top: 1px dashed var(--lt-rule);
+  padding-top: 8px;
+}
+
+/* Error */
+
+.lt-err {
+  color: var(--lt-err);
+  margin: 6px 0;
+}
+
+/* Input row */
+
+.lt-input {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--lt-rule);
+  padding: 10px 16px;
+  background: var(--lt-bg-elev);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  position: relative;
+}
+
+.lt-input__chev {
+  color: var(--lt-accent);
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.lt-input__textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--lt-fg);
+  font-family: var(--lt-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  padding: 2px 0;
+  min-height: 18px;
+  max-height: 140px;
+}
+
+.lt-input__textarea::placeholder {
+  color: var(--lt-fg-faint);
+}
+
+.lt-input__hints {
+  position: absolute;
+  right: 16px;
+  bottom: -16px;
+  font-size: 10px;
+  color: var(--lt-fg-faint);
+  text-align: right;
+  pointer-events: none;
+}
+
+/* Slash command palette */
+
+.lt-slash {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 16px;
+  right: 16px;
+  background: var(--lt-bg-elev);
+  border: 1px solid var(--lt-rule);
+  border-radius: 8px;
+  padding: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 14px 32px -10px rgba(0,0,0,0.6);
+  z-index: 5;
+}
+
+.lt-slash__label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lt-fg-faint);
+  padding: 4px 8px 6px;
+}
+
+.lt-slash__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--lt-fg);
+  font-size: 12px;
+}
+
+.lt-slash__item--active {
+  background: var(--lt-bg-soft);
+}
+
+.lt-slash__cmd {
+  color: var(--lt-accent);
+  font-weight: 600;
+  flex: 0 0 110px;
+}
+
+.lt-slash__desc {
+  color: var(--lt-fg-mute);
+  flex: 1;
+  font-size: 11.5px;
+}

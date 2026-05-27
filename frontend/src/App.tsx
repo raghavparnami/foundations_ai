@@ -4,6 +4,7 @@ import Home from "./routes/Home";
 import Converse from "./routes/Converse";
 import Weave from "./routes/Weave";
 import Console from "./routes/Console";
+import TerminalRoute from "./routes/Terminal";
 import Chat from "./routes/Chat";
 import Connections from "./routes/Connections";
 import Skills from "./routes/Skills";
@@ -19,10 +20,11 @@ const router = createBrowserRouter([
     path: "/",
     Component: Layout,
     children: [
-      // New home: Mission Control tile dashboard + Plan-Mode asking.
-      // No chat. No transcript. Tiles + a Plan modal + slide-out report.
-      { index: true, Component: Console },
+      // New home: Loom Terminal — Claude-Code-shaped UI. Mono, dark,
+      // tool blocks (⏺/⎿), todo checklists, slash commands.
+      { index: true, Component: TerminalRoute },
       // Previous attempts kept accessible as fallback URLs.
+      { path: "console", Component: Console },
       { path: "weave", Component: Weave },
       { path: "converse", Component: Converse },
       // Legacy SR + standing-meeting view, kept as a read-only roster.
