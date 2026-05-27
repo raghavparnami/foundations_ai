@@ -19,11 +19,13 @@ type Props = {
   speaking: Set<string>;
   /** SMEs that spoke (done) in the current turn. */
   participated: Set<string>;
-  /** Open a one-SME meeting / focus that persona. Optional. */
+  /** Click an SME chip → open the detail drawer. */
   onPick?: (persona: SMEPersona) => void;
+  /** Click the "+" chip → open the create-SME modal. */
+  onAdd?: () => void;
 };
 
-export default function SMERail({ speaking, participated, onPick }: Props) {
+export default function SMERail({ speaking, participated, onPick, onAdd }: Props) {
   const { personas } = useAllPersonas();
 
   return (
@@ -80,6 +82,33 @@ export default function SMERail({ speaking, participated, onPick }: Props) {
             </button>
           );
         })}
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            aria-label="Add a new SME"
+            title="Add a new SME"
+            className="shrink-0 inline-flex items-center gap-1.5 px-1.5 py-1 rounded-full transition hover:bg-[var(--bg-elev)]"
+            style={{
+              border: "0.5px dashed var(--color-border-tertiary)",
+              color: "var(--text-faint)",
+            }}
+          >
+            <span
+              aria-hidden
+              className="inline-flex items-center justify-center rounded-full text-[12px]"
+              style={{
+                width: 20,
+                height: 20,
+                background: "var(--bg-elev)",
+                color: "var(--text-muted)",
+              }}
+            >
+              +
+            </span>
+            <span className="text-[11px] font-medium leading-none">New SME</span>
+          </button>
+        )}
       </div>
     </div>
   );

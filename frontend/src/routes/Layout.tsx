@@ -17,8 +17,6 @@ type IconName =
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/", label: "Converse", icon: "chat" },
-  { href: "/roster", label: "Roster", icon: "roster" },
-  { href: "/ledger", label: "Ledger", icon: "ledger" },
   { href: "/spend", label: "Spend", icon: "spend" },
   { href: "/wiki", label: "Wiki", icon: "wiki" },
   { href: "/connections", label: "Connections", icon: "connections" },

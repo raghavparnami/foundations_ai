@@ -11,13 +11,19 @@ import { streamConverse } from "../features/converse/stream";
 import Transcript from "../features/converse/Transcript";
 import ComposerBar from "../features/converse/ComposerBar";
 import SMERail from "../features/converse/SMERail";
+import SMEDetailDrawer from "../features/converse/SMEDetailDrawer";
+import PlanPanel from "../features/converse/PlanPanel";
+import NewSMEModal from "../features/situation_room/NewSMEModal";
 import type {
   ConverseEvent,
   TranscriptItem,
   SpeechItem,
 } from "../features/converse/types";
 import { SME_ROSTER, getPersona } from "../features/situation_room/fixtures";
+import { useAllPersonas } from "../features/situation_room/useCustomPersonas";
 import { useCostMeter, formatUsd } from "../features/situation_room/useCostMeter";
+import { useCalibration } from "../features/situation_room/useCalibration";
+import type { SMEPersona } from "../features/situation_room/types";
 
 type Suggestion = { text: string; sme?: string };
 
@@ -32,7 +38,11 @@ export default function Converse() {
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [liveCostUsd, setLiveCostUsd] = useState(0);
+  const [drawerSme, setDrawerSme] = useState<SMEPersona | null>(null);
+  const [showNewSme, setShowNewSme] = useState(false);
   const meter = useCostMeter();
+  const calibration = useCalibration();
+  const { refresh: refreshPersonas } = useAllPersonas();
   const abortRef = useRef<AbortController | null>(null);
 
   const empty = items.length === 0;
@@ -256,18 +266,44 @@ export default function Converse() {
   return (
     <main className="flex flex-col flex-1 min-h-0 bg-[var(--bg)]">
       <TopRail meter={meter} />
-      <SMERail speaking={speaking} participated={participated} />
-      {empty ? (
-        <Empty onPick={(s) => void send(s)} />
-      ) : (
-        <Transcript items={items} busy={busy} />
-      )}
+      <SMERail
+        speaking={speaking}
+        participated={participated}
+        onPick={setDrawerSme}
+        onAdd={() => setShowNewSme(true)}
+      />
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-w-0 flex flex-col">
+          {empty ? (
+            <Empty onPick={(s) => void send(s)} />
+          ) : (
+            <Transcript items={items} busy={busy} />
+          )}
+        </div>
+        {!empty && <PlanPanel items={items} busy={busy} />}
+      </div>
       <ComposerBar
         busy={busy}
         liveCostUsd={liveCostUsd}
         onSubmit={(t) => void send(t)}
         onStop={stop}
       />
+
+      {drawerSme && (
+        <SMEDetailDrawer
+          persona={drawerSme}
+          spend={meter?.by_sme?.[drawerSme.id] ?? null}
+          calibration={calibration[drawerSme.id] ?? null}
+          onClose={() => setDrawerSme(null)}
+          onDeleted={() => void refreshPersonas()}
+        />
+      )}
+      {showNewSme && (
+        <NewSMEModal
+          onClose={() => setShowNewSme(false)}
+          onCreated={() => void refreshPersonas()}
+        />
+      )}
     </main>
   );
 }
