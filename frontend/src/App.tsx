@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from "react-router";
 import Layout from "./routes/Layout";
 import Home from "./routes/Home";
+import Converse from "./routes/Converse";
 import Chat from "./routes/Chat";
 import Connections from "./routes/Connections";
 import Skills from "./routes/Skills";
@@ -16,7 +17,12 @@ const router = createBrowserRouter([
     path: "/",
     Component: Layout,
     children: [
-      { index: true, Component: Home },
+      // New home: transcript-style conversation with the orchestrator
+      // calling SMEs visibly (handshake events).
+      { index: true, Component: Converse },
+      // Legacy SR + standing-meeting view, kept as a read-only roster.
+      { path: "roster", Component: Home },
+      // Legacy chat-thread route still accessible for power users.
       { path: "chat", Component: Chat },
       { path: "connections", Component: Connections },
       { path: "skills", Component: Skills },

@@ -12,10 +12,12 @@ type IconName =
   | "catalog"
   | "memory"
   | "ledger"
-  | "spend";
+  | "spend"
+  | "roster";
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: "/", label: "Chat", icon: "chat" },
+  { href: "/", label: "Converse", icon: "chat" },
+  { href: "/roster", label: "Roster", icon: "roster" },
   { href: "/ledger", label: "Ledger", icon: "ledger" },
   { href: "/spend", label: "Spend", icon: "spend" },
   { href: "/wiki", label: "Wiki", icon: "wiki" },
@@ -279,6 +281,15 @@ function Icon({ name, active }: { name: IconName; active: boolean }) {
         <svg {...props}>
           <path d="M12 1v22" />
           <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      );
+    case "roster":
+      return (
+        <svg {...props}>
+          <circle cx="9" cy="8" r="3" />
+          <circle cx="17" cy="9" r="2.5" />
+          <path d="M3 19a6 6 0 0 1 12 0" />
+          <path d="M14.5 17a4 4 0 0 1 7 0" />
         </svg>
       );
   }

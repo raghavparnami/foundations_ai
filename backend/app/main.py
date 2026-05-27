@@ -19,6 +19,7 @@ from app.routes import (
     catalog,
     chat,
     connections,
+    converse,
     conversations,
     decisions,
     insights,
@@ -96,3 +97,4 @@ app.include_router(admin.router, prefix="/api/admin")
 app.include_router(situation_room.router, prefix="/api/situation-room")
 app.include_router(sme.router, prefix="/api/sme")
 app.include_router(decisions.router, prefix="/api/decisions")
+app.include_router(converse.router, prefix="/api/converse")
